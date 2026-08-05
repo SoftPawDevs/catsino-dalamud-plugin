@@ -10,7 +10,7 @@ dotnet build Dropbox.sln --configuration Release --no-restore
 
 The supported Catsino compatibility build is pinned to this immutable fork commit:
 
-`SUPPORTED_DROPBOX_COMMIT=d2ee0bd2813b1551da8c7871cf74e8f753ba3054`
+`SUPPORTED_DROPBOX_COMMIT=695d169bc73cac255c1074f4cc2d359fcabf3756`
 
 The public client additionally enforces IPC `1.0.0`, build `1.0.0.7-catsino.1`, all required capabilities, and language-independent trade state. A release that changes the Dropbox assembly build identifier must update both matching public contract projects and their tests.
 

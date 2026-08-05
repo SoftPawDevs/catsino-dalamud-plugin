@@ -6,14 +6,12 @@
     "Description": "Untrusted dealer client for authorization, sessions, deposits, and backend-directed Dropbox payouts.",
     "InternalName": "Catsino.Plugin",
     "AssemblyVersion": "1.0.0.0",
-    "TestingAssemblyVersion": "1.0.0.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
-    "DownloadLinkInstall": "https://releases.catsino.invalid/Catsino.Plugin/latest.zip",
-    "DownloadLinkTesting": "https://releases.catsino.invalid/Catsino.Plugin/testing.zip",
-    "DownloadLinkUpdate": "https://releases.catsino.invalid/Catsino.Plugin/latest.zip",
-    "IconUrl": "https://releases.catsino.invalid/Catsino.Plugin/icon.png",
-    "Changelog": "Initial public dealer client.",
+    "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.0/Catsino.Plugin.zip",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.0/Catsino.Plugin.zip",
+    "Changelog": "Initial public dealer client connected to the hosted Catsino backend.",
     "Tags": ["dealer", "games"]
   }
 ]

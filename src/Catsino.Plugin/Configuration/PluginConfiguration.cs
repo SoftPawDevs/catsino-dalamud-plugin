@@ -8,5 +8,5 @@ public sealed class PluginConfiguration : IPluginConfiguration
 
     public Guid DeviceId { get; set; } = Guid.NewGuid();
 
-    public string ApiBaseUrl { get; set; } = "https://api.catsino.invalid/";
+    public string ApiBaseUrl { get; set; } = "https://152-53-121-56.sslip.io/";
 }
