@@ -215,7 +215,7 @@ public sealed class CatsinoWindow(CatsinoRuntime runtime) : Window("Catsino###Ca
         ImGui.SetNextItemWidth(180);
         ImGui.InputText("Home World", ref inviteWorld, 32);
         BeginDisabled(busy || session.State == GameSessionState.Closed);
-        if (ImGui.Button("Create invite and process /tell"))
+        if (ImGui.Button("Create invite and send /tell"))
         {
             Run(() => runtime.CreateInviteAndTellAsync(inviteName.Trim(), inviteWorld.Trim()));
         }

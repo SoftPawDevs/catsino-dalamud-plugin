@@ -1,4 +1,5 @@
 using Catsino.Plugin.Contracts;
+using Catsino.Plugin.Runtime;
 using Catsino.Plugin.Security;
 using Catsino.Plugin.Workflow;
 
@@ -59,5 +60,23 @@ public sealed class ValidationAndSecurityTests
     public void ExactCharacterIdentityRejectsUnsafeInput(string name, string world)
     {
         Assert.NotNull(DealerInputValidator.ValidateCharacter(name, world));
+    }
+
+    [Fact]
+    public void TellCommandUsesNativeCrossWorldSyntax()
+    {
+        var inviteUrl = new Uri("https://152-53-121-56.sslip.io/invite?token=abc123");
+
+        var command = GameChat.BuildTellCommand("Rhe'kash Tia", "Phoenix", inviteUrl);
+
+        Assert.Equal("/tell Rhe'kash Tia@Phoenix https://152-53-121-56.sslip.io/invite?token=abc123", command);
+    }
+
+    [Fact]
+    public void TellCommandRejectsMessagesOverTheGameChatLimit()
+    {
+        var inviteUrl = new Uri($"https://example.com/invite?token={new string('a', 500)}");
+
+        Assert.Throws<ArgumentException>(() => GameChat.BuildTellCommand("First Last", "Phoenix", inviteUrl));
     }
 }

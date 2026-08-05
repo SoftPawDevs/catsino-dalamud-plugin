@@ -16,7 +16,6 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private readonly IDalamudPluginInterface pluginInterface;
     private readonly IPlayerState playerState;
     private readonly IFramework framework;
-    private readonly ICommandManager commandManager;
     private readonly IPluginLog pluginLog;
     private readonly PluginConfiguration configuration;
     private readonly IDropboxPayoutClient dropbox;
@@ -35,13 +34,11 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         IDalamudPluginInterface pluginInterface,
         IPlayerState playerState,
         IFramework framework,
-        ICommandManager commandManager,
         IPluginLog pluginLog)
     {
         this.pluginInterface = pluginInterface;
         this.playerState = playerState;
         this.framework = framework;
-        this.commandManager = commandManager;
         this.pluginLog = pluginLog;
         configuration = pluginInterface.GetPluginConfig() as PluginConfiguration ?? new PluginConfiguration();
         if (configuration.DeviceId == Guid.Empty)
@@ -251,10 +248,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             throw new InvalidDataException("The backend returned an unsafe invite URL.");
         }
 
-        var processed = commandManager.ProcessCommand($"/tell {characterName}@{homeWorld} {invite.InviteUrl.AbsoluteUri}");
-        SetStatus(processed
-            ? "The invite tell command was processed locally; delivery is not confirmed."
-            : "The invite was created, but the tell command was not processed locally.");
+        var command = GameChat.BuildTellCommand(characterName, homeWorld, invite.InviteUrl);
+        await framework.Run(() => GameChat.SendCommand(command), cancellationToken).ConfigureAwait(false);
+        SetStatus("The invite tell command was submitted locally; delivery is not confirmed.");
     }
 
     public void PrepareDeposit(long amountGil)

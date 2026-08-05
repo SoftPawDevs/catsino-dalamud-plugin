@@ -26,7 +26,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
-        runtime = new CatsinoRuntime(pluginInterface, playerState, framework, commandManager, pluginLog);
+        runtime = new CatsinoRuntime(pluginInterface, playerState, framework, pluginLog);
         window = new CatsinoWindow(runtime);
         windowSystem.AddWindow(window);
 

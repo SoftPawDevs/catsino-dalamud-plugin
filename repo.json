@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, sessions, deposits, and backend-directed Dropbox payouts.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.0.0.0",
+    "AssemblyVersion": "1.0.1.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.0/Catsino.Plugin.zip",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.0/Catsino.Plugin.zip",
-    "Changelog": "Initial public dealer client connected to the hosted Catsino backend.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.1/Catsino.Plugin.zip",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.1/Catsino.Plugin.zip",
+    "Changelog": "Send invite /tell commands through the native FFXIV chat input on the framework thread.",
     "Tags": ["dealer", "games"]
   }
 ]
