@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install Dalamud development files
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:APPDATA "XIVLauncher\addon\Hooks\dev"
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Invoke-WebRequest "https://goatcorp.github.io/dalamud-distrib/stg/latest.zip" -OutFile "$env:RUNNER_TEMP\dalamud.zip"
+          Expand-Archive "$env:RUNNER_TEMP\dalamud.zip" -DestinationPath $target -Force
+      - name: Restore
+        run: dotnet restore Catsino.slnx
+      - name: Build
+        run: dotnet build Catsino.slnx --configuration Release --no-restore
+      - name: Test
+        run: dotnet test Catsino.slnx --configuration Release --no-build

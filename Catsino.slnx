@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Catsino.Plugin/Catsino.Plugin.csproj" />
+    <Project Path="src/Catsino.Plugin.Contracts/Catsino.Plugin.Contracts.csproj" />
+    <Project Path="src/Catsino.Dropbox.Contracts/Catsino.Dropbox.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Catsino.Plugin.Tests/Catsino.Plugin.Tests.csproj" />
+    <Project Path="tests/Catsino.Dropbox.IntegrationTests/Catsino.Dropbox.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

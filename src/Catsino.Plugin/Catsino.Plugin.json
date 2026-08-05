@@ -1,0 +1,12 @@
+{
+  "Author": "Catsino",
+  "Name": "Catsino",
+  "Punchline": "Public dealer client for Catsino sessions.",
+  "Description": "Untrusted dealer client for authorization, sessions, deposits, and backend-directed Dropbox payouts.",
+  "InternalName": "Catsino.Plugin",
+  "AssemblyVersion": "1.0.0.0",
+  "ApplicableVersion": "any",
+  "DalamudApiLevel": 15,
+  "LoadPriority": 0,
+  "Tags": ["dealer", "games"]
+}

@@ -1,0 +1,99 @@
+{
+  "contractVersion": "1.0.0",
+  "serialization": {
+    "propertyNames": "camelCase",
+    "enums": "camelCaseStrings",
+    "ids": "uuidStrings",
+    "gil": "signedInt64",
+    "percentages": "decimal",
+    "timestamps": "utcDateTimeOffset"
+  },
+  "routes": [
+    { "operation": "authorizeDealer", "method": "POST", "path": "/api/v1/dealers/authorize", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "AuthorizeDealerRequest", "responseDto": "DealerAuthorizationDto" },
+    { "operation": "refreshDealer", "method": "POST", "path": "/api/v1/dealers/refresh", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "RefreshDealerRequest", "responseDto": "DealerAuthorizationDto" },
+    { "operation": "disconnectDealer", "method": "POST", "path": "/api/v1/dealers/disconnect", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "dealerDisconnect", "responseDto": null },
+    { "operation": "createPluginPairing", "method": "POST", "path": "/api/v1/plugin/pairings", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "PluginPairingRequest", "responseDto": "PluginPairingDto" },
+    { "operation": "pluginHeartbeat", "method": "POST", "path": "/api/v1/plugin/pairings/{pairingId}/heartbeat", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "PluginHeartbeatRequest", "responseDto": null },
+    { "operation": "reportDropboxStatus", "method": "POST", "path": "/api/v1/dropbox/status", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "DropboxStatusDto", "responseDto": null },
+    { "operation": "listGameSessions", "method": "GET", "path": "/api/v1/game-sessions", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "GameSessionDto[]" },
+    { "operation": "getActiveGameSession", "method": "GET", "path": "/api/v1/game-sessions/active", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "GameSessionDto|null" },
+    { "operation": "getGameSession", "method": "GET", "path": "/api/v1/game-sessions/{sessionId}", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "GameSessionDto" },
+    { "operation": "createGameSession", "method": "POST", "path": "/api/v1/game-sessions", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "CreateGameSessionRequest", "responseDto": "GameSessionDto" },
+    { "operation": "updateSessionFee", "method": "PATCH", "path": "/api/v1/game-sessions/{sessionId}/fee", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "UpdateSessionFeeRequest", "responseDto": "GameSessionDto" },
+    { "operation": "openGameSession", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/open", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": null, "responseDto": "GameSessionDto" },
+    { "operation": "closeGameSession", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/close", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": null, "responseDto": "GameSessionDto" },
+    { "operation": "listSessionPlayers", "method": "GET", "path": "/api/v1/game-sessions/{sessionId}/players", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "SessionPlayerDto[]" },
+    { "operation": "createInvite", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/invites", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "CreateInviteRequest", "responseDto": "InviteDto" },
+    { "operation": "createManualDeposit", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/deposits", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "CreateManualDepositRequest", "responseDto": "DepositDto" },
+    { "operation": "reportPayoutEvent", "method": "POST", "path": "/api/v1/payout-events", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "PayoutEventDto", "responseDto": "PayoutEventAckDto" },
+    { "operation": "acknowledgePayoutEvent", "method": "POST", "path": "/api/v1/payout-events/{operationId}/{sequenceNumber}/ack", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "PayoutEventAckDto", "responseDto": null },
+    { "operation": "listOpenPayoutOperations", "method": "GET", "path": "/api/v1/payout-operations/open", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "PayoutOperationDto[]" },
+    { "operation": "retryCashout", "method": "POST", "path": "/api/v1/cashouts/{operationId}/retry", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "RetryCashoutRequest", "responseDto": "PayoutOperationDto" },
+    { "operation": "reconcileCashout", "method": "POST", "path": "/api/v1/cashouts/{operationId}/reconciliation", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "ReconcileCashoutRequest", "responseDto": "PayoutOperationDto" }
+  ],
+  "enumDefinitions": {
+    "GameSessionState": ["created", "open", "closing", "closed"],
+    "SessionPlayerState": ["invited", "open", "closed"]
+  },
+  "dtoDefinitions": {
+    "DropboxCapabilitiesDto": { "isAvailable": "bool", "ipcVersion": "string|null", "buildVersion": "string|null", "capabilities": "string[]", "supportsLanguageIndependentTradeState": "bool", "pluginInstanceId": "guid|null" },
+    "GameSessionDto": { "sessionId": "guid", "gameType": "string", "feePercent": "decimal", "state": "GameSessionState", "playerCount": "int32", "totalDepositedGil": "int64", "payoutState": "string", "reconciliationState": "string", "createdAt": "utcDateTimeOffset", "openedAt": "utcDateTimeOffset|null", "closedAt": "utcDateTimeOffset|null" },
+    "SessionPlayerDto": { "playerId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "state": "SessionPlayerState", "depositedGil": "int64", "payoutGil": "int64|null", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
+    "DepositDto": { "depositId": "guid", "sessionId": "guid", "playerId": "guid", "amountGil": "int64", "idempotencyKey": "guid", "recordedAt": "utcDateTimeOffset" },
+    "PayoutOperationDto": { "operationId": "guid", "legId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "amountGil": "int64", "state": "PayoutOperationState", "lastErrorCode": "string|null", "lastErrorMessage": "string|null", "updatedAt": "utcDateTimeOffset" },
+    "PayoutEventDto": { "operationId": "guid", "legId": "guid", "sequenceNumber": "int64", "pluginInstanceId": "guid", "eventType": "PayoutEventType", "characterName": "string", "homeWorld": "string", "amountGil": "int64", "occurredAt": "utcDateTimeOffset", "errorCode": "string|null", "errorMessage": "string|null", "isAmbiguous": "bool" }
+  },
+  "dtoExamples": {
+    "CharacterIdentityDto": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true },
+    "DropboxCapabilitiesDto": { "isAvailable": true, "ipcVersion": "1.0.0", "buildVersion": "1.0.0.7-catsino.1", "capabilities": ["outgoingGilOnly", "exactCharacterIdentity", "oneActiveOperation", "maximumGil:1000000", "languageIndependentTradeState", "noAutomaticRetry"], "supportsLanguageIndependentTradeState": true, "pluginInstanceId": "32000000-0000-0000-0000-000000000003" },
+    "AuthorizeDealerRequest": { "activationJwt": "redacted.jwt.value", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.0.0", "contractVersion": "1.0.0", "dropbox": { "isAvailable": true, "ipcVersion": "1.0.0", "buildVersion": "1.0.0.7-catsino.1", "capabilities": ["outgoingGilOnly"], "supportsLanguageIndependentTradeState": true, "pluginInstanceId": "32000000-0000-0000-0000-000000000003" } },
+    "RefreshDealerRequest": { "refreshCredential": "redacted-refresh-credential", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.0.0", "contractVersion": "1.0.0", "dropbox": { "isAvailable": true, "ipcVersion": "1.0.0", "buildVersion": "1.0.0.7-catsino.1", "capabilities": ["outgoingGilOnly"], "supportsLanguageIndependentTradeState": true, "pluginInstanceId": "32000000-0000-0000-0000-000000000003" } },
+    "DealerAuthorizationDto": { "pairingId": "00000000-0000-0000-0000-000000000002", "dealerId": "00000000-0000-0000-0000-000000000003", "accessToken": "redacted-access-token", "refreshCredential": "redacted-refresh-credential", "accessTokenExpiresAt": "2026-08-05T13:00:00+00:00", "authorizedAt": "2026-08-05T12:00:00+00:00" },
+    "dealerDisconnect": { "pairingId": "00000000-0000-0000-0000-000000000002" },
+    "PluginPairingRequest": { "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.0.0", "contractVersion": "1.0.0", "dropbox": { "isAvailable": true, "ipcVersion": "1.0.0", "buildVersion": "1.0.0.7-catsino.1", "capabilities": ["outgoingGilOnly"], "supportsLanguageIndependentTradeState": true, "pluginInstanceId": "32000000-0000-0000-0000-000000000003" } },
+    "PluginPairingDto": { "pairingId": "00000000-0000-0000-0000-000000000002", "pairedAt": "2026-08-05T12:00:00+00:00", "lastHeartbeatAt": "2026-08-05T12:00:00+00:00" },
+    "PluginHeartbeatRequest": { "pairingId": "00000000-0000-0000-0000-000000000002", "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.0.0", "contractVersion": "1.0.0", "dropbox": { "isAvailable": true, "ipcVersion": "1.0.0", "buildVersion": "1.0.0.7-catsino.1", "capabilities": ["outgoingGilOnly"], "supportsLanguageIndependentTradeState": true, "pluginInstanceId": "32000000-0000-0000-0000-000000000003" }, "pendingOutboxEvents": 0, "sentAt": "2026-08-05T12:00:00+00:00" },
+    "DropboxStatusDto": { "isAvailable": true, "isCompatible": true, "payoutModeEnabled": false, "activeOperationId": null, "status": "available", "observedAt": "2026-08-05T12:00:00+00:00" },
+    "ApiErrorDto": { "code": "validationError", "message": "Request validation failed.", "validationErrors": { "feePercent": ["Must be between 0 and 100."] }, "traceId": "00000000-0000-0000-0000-000000000004" },
+    "GameSessionDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "gameType": "plinko", "feePercent": 0.0, "state": "closing", "playerCount": 1, "totalDepositedGil": 1000, "payoutState": "pending", "reconciliationState": "clear", "createdAt": "2026-08-05T12:00:00+00:00", "openedAt": "2026-08-05T12:05:00+00:00", "closedAt": null },
+    "CreateGameSessionRequest": { "gameType": "plinko", "feePercent": 0.0 },
+    "UpdateSessionFeeRequest": { "feePercent": 5.5 },
+    "SessionPlayerDto": { "playerId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "state": "open", "depositedGil": 1000, "payoutGil": null, "payoutState": "pending", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
+    "CreateInviteRequest": { "characterName": "Exact Player", "homeWorld": "Ragnarok" },
+    "InviteDto": { "inviteId": "21000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "inviteUrl": "https://catsino.example/invites/example", "expiresAt": "2026-08-05T12:15:00+00:00" },
+    "CreateManualDepositRequest": { "playerId": "20000000-0000-0000-0000-000000000002", "amountGil": 1000 },
+    "DepositDto": { "depositId": "22000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "playerId": "20000000-0000-0000-0000-000000000002", "amountGil": 1000, "idempotencyKey": "23000000-0000-0000-0000-000000000002", "recordedAt": "2026-08-05T12:07:00+00:00" },
+    "PayoutLegDto": { "operationId": "30000000-0000-0000-0000-000000000003", "legId": "31000000-0000-0000-0000-000000000003", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "amountGil": 1000, "requiredDropboxIpcVersion": "1.0.0", "requiredDropboxBuildVersion": "1.0.0.7-catsino.1", "issuedAt": "2026-08-05T12:08:00+00:00" },
+    "PayoutOperationDto": { "operationId": "30000000-0000-0000-0000-000000000003", "legId": "31000000-0000-0000-0000-000000000003", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "amountGil": 1000, "state": "reconciliationRequired", "lastErrorCode": "reconciliationRequired", "lastErrorMessage": "Structured proof was incomplete.", "updatedAt": "2026-08-05T12:10:00+00:00" },
+    "PayoutEventDto": { "operationId": "30000000-0000-0000-0000-000000000003", "legId": "31000000-0000-0000-0000-000000000003", "sequenceNumber": 7, "pluginInstanceId": "32000000-0000-0000-0000-000000000003", "eventType": "tradeFailed", "characterName": "Exact Player", "homeWorld": "Ragnarok", "amountGil": 1000, "occurredAt": "2026-08-05T12:10:00+00:00", "errorCode": "reconciliationRequired", "errorMessage": "Structured proof was incomplete.", "isAmbiguous": true },
+    "PayoutEventAckDto": { "operationId": "30000000-0000-0000-0000-000000000003", "sequenceNumber": 7, "acknowledgedAt": "2026-08-05T12:10:01+00:00" },
+    "RetryCashoutRequest": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "dealerTriggered" },
+    "ReconcileCashoutRequest": { "operationId": "30000000-0000-0000-0000-000000000003", "dealerEvidence": "Dealer verified the transaction history." },
+    "CancelPayoutOperationDto": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "backendCancelled" },
+    "ReconciliationRequestDto": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "ambiguousTradeOutcome" }
+  },
+  "hub": {
+    "path": "/hubs/plugin",
+    "serverToPlugin": [
+      { "name": "RefreshDealerSessions", "payload": null },
+      { "name": "QueuePayoutLeg", "payloadDto": "PayoutLegDto" },
+      { "name": "CancelPayoutOperation", "payloadDto": "CancelPayoutOperationDto" },
+      { "name": "RequestPayoutReconciliation", "payloadDto": "ReconciliationRequestDto" },
+      { "name": "SessionClosed", "payload": "10000000-0000-0000-0000-000000000001" },
+      { "name": "DealerAuthorizationRevoked", "payload": "authorizationRevoked" },
+      { "name": "ReconnectRequired", "payload": "tokenRotated" }
+    ],
+    "pluginToServer": [
+      { "name": "ReportDepositStatus", "arguments": ["10000000-0000-0000-0000-000000000001", "20000000-0000-0000-0000-000000000002", "23000000-0000-0000-0000-000000000002", "succeeded", null] },
+      { "name": "ReportDropboxStatus", "payloadDto": "DropboxStatusDto" },
+      { "name": "ReportOutgoingTradeStatus", "payloadDto": "PayoutOperationDto" },
+      { "name": "ReportOutboxStatus", "arguments": [0, "2026-08-05T12:10:00+00:00"] }
+    ]
+  },
+  "idempotency": {
+    "header": "Idempotency-Key",
+    "format": "UUID",
+    "retryRule": "Reuse the same UUID for every HTTP attempt of one logical mutation and clear it only after a successful response.",
+    "payoutEventRule": "Deterministic UUID derived from contract purpose, operationId, and sequenceNumber. Payout acknowledgments use a separate purpose namespace."
+  }
+}

@@ -1,0 +1,19 @@
+[
+  {
+    "Author": "Catsino",
+    "Name": "Catsino",
+    "Punchline": "Public dealer client for Catsino sessions.",
+    "Description": "Untrusted dealer client for authorization, sessions, deposits, and backend-directed Dropbox payouts.",
+    "InternalName": "Catsino.Plugin",
+    "AssemblyVersion": "1.0.0.0",
+    "TestingAssemblyVersion": "1.0.0.0",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "DownloadLinkInstall": "https://releases.catsino.invalid/Catsino.Plugin/latest.zip",
+    "DownloadLinkTesting": "https://releases.catsino.invalid/Catsino.Plugin/testing.zip",
+    "DownloadLinkUpdate": "https://releases.catsino.invalid/Catsino.Plugin/latest.zip",
+    "IconUrl": "https://releases.catsino.invalid/Catsino.Plugin/icon.png",
+    "Changelog": "Initial public dealer client.",
+    "Tags": ["dealer", "games"]
+  }
+]

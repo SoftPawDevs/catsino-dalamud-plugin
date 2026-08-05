@@ -1,0 +1,71 @@
+namespace Catsino.Plugin.Contracts;
+
+public enum PayoutOperationState
+{
+    Queued,
+    WaitingForPlayer,
+    TradeOpened,
+    TradeLocked,
+    Completed,
+    Cancelled,
+    Failed,
+    ReconciliationRequired,
+}
+
+public enum PayoutEventType
+{
+    PlayerDetected,
+    TradeOpened,
+    TradeLocked,
+    TradeCompleted,
+    TradeCancelled,
+    TradeFailed,
+    TradeTimedOut,
+}
+
+public sealed record PayoutLegDto(
+    Guid OperationId,
+    Guid LegId,
+    Guid SessionId,
+    string CharacterName,
+    string HomeWorld,
+    long AmountGil,
+    string RequiredDropboxIpcVersion,
+    string RequiredDropboxBuildVersion,
+    DateTimeOffset IssuedAt);
+
+public sealed record PayoutOperationDto(
+    Guid OperationId,
+    Guid LegId,
+    Guid SessionId,
+    string CharacterName,
+    string HomeWorld,
+    long AmountGil,
+    PayoutOperationState State,
+    string? LastErrorCode,
+    string? LastErrorMessage,
+    DateTimeOffset UpdatedAt);
+
+public sealed record PayoutEventDto(
+    Guid OperationId,
+    Guid LegId,
+    long SequenceNumber,
+    Guid PluginInstanceId,
+    PayoutEventType EventType,
+    string CharacterName,
+    string HomeWorld,
+    long AmountGil,
+    DateTimeOffset OccurredAt,
+    string? ErrorCode,
+    string? ErrorMessage,
+    bool IsAmbiguous);
+
+public sealed record PayoutEventAckDto(Guid OperationId, long SequenceNumber, DateTimeOffset AcknowledgedAt);
+
+public sealed record RetryCashoutRequest(Guid OperationId, string Reason);
+
+public sealed record ReconcileCashoutRequest(Guid OperationId, string DealerEvidence);
+
+public sealed record CancelPayoutOperationDto(Guid OperationId, string Reason);
+
+public sealed record ReconciliationRequestDto(Guid OperationId, string Reason);
