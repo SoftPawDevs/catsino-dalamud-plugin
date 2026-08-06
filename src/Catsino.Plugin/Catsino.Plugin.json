@@ -4,7 +4,7 @@
   "Punchline": "Public dealer client for Catsino sessions.",
   "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
   "InternalName": "Catsino.Plugin",
-  "AssemblyVersion": "1.2.0.0",
+  "AssemblyVersion": "1.2.1.0",
   "ApplicableVersion": "any",
   "DalamudApiLevel": 15,
   "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",

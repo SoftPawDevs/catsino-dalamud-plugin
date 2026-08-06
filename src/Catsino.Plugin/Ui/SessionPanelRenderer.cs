@@ -200,9 +200,9 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TextUnformatted($"{invite.InitialBalanceGil:N0} gil");
         ImGui.TableNextColumn();
         ImGui.TextDisabled("Pending");
-        ImGui.TableNextColumn();
+        ImGui.SameLine();
         ImGui.TextUnformatted($"Expires in {InviteCountdown.Format(invite.ExpiresAt, now)}");
-        ImGui.TableNextColumn();
+        ImGui.SameLine();
         BeginDisabled(state.Busy);
         if (ImGui.Button("Cancel invite"))
         {
@@ -229,10 +229,8 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.SetNextItemWidth(-1);
         ImGui.InputText("##inviteBalance", ref state.InviteBalance, 20, ImGuiInputTextFlags.CharsDecimal);
         ImGui.TableNextColumn();
-        ImGui.TextDisabled("-");
-        ImGui.TableNextColumn();
         ImGui.TextDisabled("New player");
-        ImGui.TableNextColumn();
+        ImGui.SameLine();
         BeginDisabled(state.Busy || session.State == GameSessionState.Closed);
         if (ImGui.Button("+##invite"))
         {
