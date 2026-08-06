@@ -13,13 +13,11 @@ namespace Catsino.Plugin.Payout;
 
 public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
 {
-    private static readonly TimeSpan InitialAmountSubmissionTimeout = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan AmountRetryDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AmountSubmissionTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan TradeReadyTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ActionThrottle = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan TradeRequestThrottle = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(2);
-    private const int MaxAmountSubmissionRetries = 3;
 
     private readonly IFramework framework;
     private readonly IObjectTable objects;
@@ -47,10 +45,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     private bool tradeLocked;
     private bool confirmationAccepted;
     private bool structuredDumpLogged;
-    private int amountSubmissionRetries;
-    private DateTimeOffset? tradeOpenedAt;
     private DateTimeOffset? tradeConditionOpenSince;
-    private DateTimeOffset? lastAmountRetryAt;
     private DateTimeOffset? tradeClosedAt;
     private DateTimeOffset nextActionAt = DateTimeOffset.MinValue;
     private DateTimeOffset nextTradeRequestAt = DateTimeOffset.MinValue;
@@ -201,7 +196,6 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             if (!tradeOpened)
             {
                 tradeOpened = true;
-                tradeOpenedAt = DateTimeOffset.UtcNow;
                 UpdateOperation(PayoutTradeState.TradeOpened, null, null, false);
                 Publish(PayoutTradeEventType.TradeOpened, null, null, false);
             }
@@ -229,29 +223,23 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
                 LogStructuredDump(operation);
             }
 
-            if (state.ExactAmountSubmitted)
+            if (!amountSubmitted)
             {
-                amountSubmitted = true;
-            }
-            else
-            {
-                if (TryRetryAmountSubmission(operation))
-                {
-                    return;
-                }
-
-                if (ShouldFailAmountSubmission())
+                if (tradeConditionOpenSince is not null &&
+                    DateTimeOffset.UtcNow - tradeConditionOpenSince.Value > AmountSubmissionTimeout)
                 {
                     PublishTerminal(
                         PayoutTradeEventType.TradeFailed,
                         PayoutTradeState.Failed,
                         "amountSubmissionFailed",
-                        "The trade opened, but the expected gil amount could not be submitted after 3 retries.",
+                        "The trade opened, but the expected gil amount could not be entered.",
                         false);
                     operation = null;
                     detector = null;
                     return;
                 }
+
+                return;
             }
 
             if (!tradeLocked && state.LocalTradeLocked && state.PartnerTradeLocked)
@@ -361,17 +349,12 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
                               inventoryManager->TradePartnerEntityId == expectedPlayerEntityId &&
                               string.Equals(inventoryManager->TradePartnerNameString, current.CharacterName, StringComparison.OrdinalIgnoreCase);
 
-        long offeredGil = 0;
         var anyNonGilItem = false;
         var slots = inventoryManager->TradeItemsLocal;
         for (var index = 0; index < slots.Length; index++)
         {
             var itemId = slots[index].ItemId;
-            if (itemId == 1)
-            {
-                offeredGil += slots[index].Quantity;
-            }
-            else if (itemId != 0)
+            if (itemId != 0 && itemId != 1)
             {
                 anyNonGilItem = true;
             }
@@ -383,7 +366,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             condition[ConditionFlag.TradeOpen],
             true,
             exactPartnerVerified,
-            !anyNonGilItem && offeredGil == current.AmountGil,
+            amountSubmitted && !anyNonGilItem,
             localLocked,
             partnerLocked,
             confirmationAccepted || localState == TradeState.Confirmed,
@@ -569,7 +552,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     {
         var builder = new System.Text.StringBuilder();
         builder.Append($"Catsino payout failure during {stage} for {current.CharacterName}@{current.HomeWorld} / {current.AmountGil:N0} gil. ");
-        builder.Append($"operationId={current.OperationId}, state={current.State}, retries={amountSubmissionRetries}/{MaxAmountSubmissionRetries}, ");
+        builder.Append($"operationId={current.OperationId}, state={current.State}, ");
         builder.Append($"flags: playerDetected={playerDetected}, tradeRequested={tradeRequested}, tradeOpened={tradeOpened}, gilInputOpened={gilInputOpened}, amountSubmitted={amountSubmitted}, tradeLocked={tradeLocked}, confirmationAccepted={confirmationAccepted}. ");
         builder.Append($"exception={exception}");
         log.Error(builder.ToString());
@@ -599,37 +582,6 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         TryReadCurrentGil(out var gil)
             ? gil
             : throw new InvalidOperationException("The currency inventory is unavailable.");
-
-    private bool TryRetryAmountSubmission(PayoutTradeOperation current)
-    {
-        if (tradeOpenedAt is null || DateTimeOffset.UtcNow - tradeOpenedAt.Value < InitialAmountSubmissionTimeout)
-        {
-            return false;
-        }
-
-        if (amountSubmissionRetries >= MaxAmountSubmissionRetries)
-        {
-            return false;
-        }
-
-        if (lastAmountRetryAt is not null && DateTimeOffset.UtcNow - lastAmountRetryAt.Value < AmountRetryDelay)
-        {
-            return false;
-        }
-
-        amountSubmissionRetries++;
-        lastAmountRetryAt = DateTimeOffset.UtcNow;
-        gilInputOpened = false;
-        amountSubmitted = false;
-        log.Warning($"Retrying Catsino payout amount submission attempt {amountSubmissionRetries}/{MaxAmountSubmissionRetries} for {current.AmountGil:N0} gil to {current.CharacterName}@{current.HomeWorld}.");
-        nextActionAt = DateTimeOffset.MinValue;
-        return true;
-    }
-
-    private bool ShouldFailAmountSubmission() =>
-        amountSubmissionRetries >= MaxAmountSubmissionRetries &&
-        lastAmountRetryAt is not null &&
-        DateTimeOffset.UtcNow - lastAmountRetryAt.Value >= AmountRetryDelay;
 
     private void PublishTerminal(PayoutTradeEventType eventType, PayoutTradeState state, string? errorCode, string? errorMessage, bool ambiguous)
     {
@@ -687,10 +639,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         tradeLocked = false;
         confirmationAccepted = false;
         structuredDumpLogged = false;
-        amountSubmissionRetries = 0;
-        tradeOpenedAt = null;
         tradeConditionOpenSince = null;
-        lastAmountRetryAt = null;
         tradeClosedAt = null;
         nextActionAt = DateTimeOffset.MinValue;
         nextTradeRequestAt = DateTimeOffset.MinValue;
