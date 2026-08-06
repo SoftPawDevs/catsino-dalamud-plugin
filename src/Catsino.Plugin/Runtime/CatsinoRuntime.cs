@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Catsino.Dropbox.Contracts;
 using Catsino.Plugin.Backend;
 using Catsino.Plugin.Configuration;
@@ -24,10 +25,21 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private readonly IPayoutOutbox outbox;
     private readonly PayoutCoordinator payoutCoordinator;
     private readonly LogicalIdempotencyKeys financialKeys = new();
+    private readonly SessionRosterStore rosterStore = new();
+    private readonly ConcurrentDictionary<SessionPlayerKey, BalanceAdjustmentSubmission> balanceAdjustments = new();
+    private readonly ConcurrentDictionary<SessionPlayerKey, CashOutSubmission> cashOuts = new();
+    private readonly object stateSync = new();
+    private readonly object trackedSessionsSync = new();
+    private readonly HashSet<Guid> trackedSessions = [];
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
+    private readonly SemaphoreSlim sessionRefreshGate = new(1, 1);
+    private readonly SemaphoreSlim hubRecoveryGate = new(1, 1);
     private DateTimeOffset nextIdentityCheck = DateTimeOffset.MinValue;
     private DateTimeOffset nextHeartbeat = DateTimeOffset.MinValue;
+    private DateTimeOffset nextRosterPoll = DateTimeOffset.MinValue;
     private CharacterIdentityDto character = new(string.Empty, string.Empty, string.Empty, false);
+    private long selectionRevision;
+    private long authorizationEpoch;
     private bool disposed;
 
     public CatsinoRuntime(
@@ -74,13 +86,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         hub.SessionClosed += _ => RunBackground(RefreshSessionsAsync);
         hub.DealerAuthorizationRevoked += reason => RunBackground(token => RevokeAuthorizationAsync(reason, token));
         hub.ReconnectRequired += reason => RunBackground(token => ReconnectHubAsync(reason, token));
-        hub.ConnectionChanged += connected =>
-        {
-            if (connected)
-            {
-                RunBackground(payoutCoordinator.ReplayOutboxAsync);
-            }
-        };
+        hub.Reconnected += () => RunBackground(SynchronizeAfterHubConnectionAsync);
+        hub.TerminallyDisconnected += () => RunBackground(RecoverHubConnectionAsync);
 
         framework.Update += OnFrameworkUpdate;
         if (character.IsLoggedIn)
@@ -103,23 +110,31 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     public GameSessionDto? SelectedSession { get; private set; }
 
-    public IReadOnlyList<SessionPlayerDto> Players { get; private set; } = [];
-
-    public SessionPlayerDto? SelectedPlayer { get; private set; }
-
     public IReadOnlyList<PayoutOperationDto> OpenPayoutOperations { get; private set; } = [];
 
     public PayoutOperationDto? ActivePayout => payoutCoordinator.ActiveOperation;
 
     public ReconciliationRequestDto? LastReconciliationRequest { get; private set; }
 
-    public DepositSubmission? PendingDeposit { get; private set; }
-
-    public DepositSubmission? RecentDeposit { get; private set; }
+    public SessionActionDraftStore ActionDrafts { get; } = new();
 
     public DropboxCapabilitiesDto DropboxCapabilities => GetDropboxCapabilities();
 
     public int PendingOutboxEvents { get; private set; }
+
+    public event Action<Guid>? SessionRemoved;
+
+    public SessionRosterDto? GetRoster(Guid sessionId) => rosterStore.Get(sessionId);
+
+    public GameSessionDto? GetSession(Guid sessionId) =>
+        SelectedSession?.SessionId == sessionId
+            ? SelectedSession
+            : Sessions.FirstOrDefault(item => item.SessionId == sessionId);
+
+    public BalanceAdjustmentSubmission? GetBalanceAdjustment(SessionPlayerKey player) =>
+        balanceAdjustments.GetValueOrDefault(player);
+
+    public CashOutSubmission? GetCashOut(SessionPlayerKey player) => cashOuts.GetValueOrDefault(player);
 
     public async Task AuthorizeAsync(string activationJwt, CancellationToken cancellationToken = default)
     {
@@ -135,6 +150,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
+        InvalidateAuthorizationEpoch();
         await hub.StopAsync(cancellationToken).ConfigureAwait(false);
         await api.DisconnectAsync(cancellationToken).ConfigureAwait(false);
         ClearDealerState();
@@ -143,36 +159,118 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     public async Task RefreshSessionsAsync(CancellationToken cancellationToken = default)
     {
-        RequireAuthorization();
-        Sessions = await api.GetSessionsAsync(cancellationToken).ConfigureAwait(false);
-        var selectedId = SelectedSession?.SessionId;
-        SelectedSession = selectedId is null
-            ? await api.GetActiveSessionAsync(cancellationToken).ConfigureAwait(false)
-            : Sessions.FirstOrDefault(item => item.SessionId == selectedId);
-        if (SelectedSession is not null)
-        {
-            await LoadPlayersAsync(SelectedSession.SessionId, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            Players = [];
-            SelectedPlayer = null;
-        }
+        await RefreshSessionsCoreAsync(true, cancellationToken).ConfigureAwait(false);
+    }
 
-        OpenPayoutOperations = await api.GetOpenPayoutOperationsAsync(cancellationToken).ConfigureAwait(false);
-        SetStatus("Dealer sessions refreshed.");
+    private async Task RefreshSessionsCoreAsync(bool reportStatus, CancellationToken cancellationToken)
+    {
+        await sessionRefreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            RequireAuthorization();
+            var epoch = Volatile.Read(ref authorizationEpoch);
+            var selection = Volatile.Read(ref selectionRevision);
+            var selectedId = SelectedSession?.SessionId;
+            var sessions = await api.GetSessionsAsync(cancellationToken).ConfigureAwait(false);
+            var selected = selectedId is null
+                ? await api.GetActiveSessionAsync(cancellationToken).ConfigureAwait(false)
+                : sessions.FirstOrDefault(item => item.SessionId == selectedId);
+            var operations = await api.GetOpenPayoutOperationsAsync(cancellationToken).ConfigureAwait(false);
+            if (epoch != Volatile.Read(ref authorizationEpoch) || !api.IsAuthorized)
+            {
+                return;
+            }
+
+            lock (stateSync)
+            {
+                if (epoch != Volatile.Read(ref authorizationEpoch) || !api.IsAuthorized)
+                {
+                    return;
+                }
+
+                Sessions = sessions;
+                OpenPayoutOperations = operations;
+                if (selection == Volatile.Read(ref selectionRevision))
+                {
+                    SelectedSession = selected;
+                    if (selected is not null)
+                    {
+                        TrackSession(selected.SessionId);
+                    }
+                }
+
+                var available = sessions.Select(item => item.SessionId).ToHashSet();
+                foreach (var removedSessionId in rosterStore.SessionIds.Where(id => !available.Contains(id)).ToArray())
+                {
+                    ClearSessionState(removedSessionId, notify: true);
+                }
+            }
+
+            try
+            {
+                await RefreshTrackedRostersAsync(epoch, cancellationToken).ConfigureAwait(false);
+            }
+            catch when (epoch != Volatile.Read(ref authorizationEpoch))
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                pluginLog.Warning("Session data refreshed, but a roster refresh failed: {Message}", SecretRedactor.Redact(exception.Message));
+            }
+
+            lock (stateSync)
+            {
+                if (epoch == Volatile.Read(ref authorizationEpoch) && reportStatus)
+                {
+                    SetStatus("Dealer sessions refreshed.");
+                }
+            }
+        }
+        finally
+        {
+            sessionRefreshGate.Release();
+        }
     }
 
     public async Task SelectSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
-        SelectedSession = await api.GetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await LoadPlayersAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        var revision = Interlocked.Increment(ref selectionRevision);
+        var epoch = Volatile.Read(ref authorizationEpoch);
+        var session = await api.GetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        lock (stateSync)
+        {
+            if (revision != Volatile.Read(ref selectionRevision) || epoch != Volatile.Read(ref authorizationEpoch) || !api.IsAuthorized)
+            {
+                return;
+            }
+
+            SelectedSession = session;
+            ApplySession(session);
+            TrackSession(sessionId);
+            rosterStore.Invalidate(sessionId);
+        }
+
+        await rosterStore.RefreshAsync(sessionId, LoadRoster, cancellationToken).ConfigureAwait(false);
+
+        async Task<SessionRosterDto> LoadRoster(Guid id, CancellationToken token)
+        {
+            var roster = await api.GetSessionRosterAsync(id, token).ConfigureAwait(false);
+            if (epoch != Volatile.Read(ref authorizationEpoch))
+            {
+                throw new OperationCanceledException("Dealer authorization changed while selecting the session.");
+            }
+
+            return roster;
+        }
     }
 
-    public void SelectPlayer(Guid playerId)
+    public void TrackSession(Guid sessionId)
     {
-        SelectedPlayer = Players.FirstOrDefault(item => item.PlayerId == playerId);
-        PendingDeposit = null;
+        lock (trackedSessionsSync)
+        {
+            trackedSessions.Add(sessionId);
+        }
     }
 
     public async Task CreatePlinkoSessionAsync(decimal feePercent, CancellationToken cancellationToken = default)
@@ -183,55 +281,104 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             throw new InvalidOperationException(feeError);
         }
 
+        var epoch = Volatile.Read(ref authorizationEpoch);
         var logicalOperation = $"session:create:plinko:{feePercent.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
         var key = financialKeys.GetOrCreate(logicalOperation);
-        SelectedSession = await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", feePercent), key, cancellationToken).ConfigureAwait(false);
+        var created = await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", feePercent), key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
-        await RefreshSessionsAsync(cancellationToken).ConfigureAwait(false);
-        SetStatus("Created a Plinko session.");
+        lock (stateSync)
+        {
+            if (epoch != Volatile.Read(ref authorizationEpoch) || !api.IsAuthorized)
+            {
+                return;
+            }
+
+            SelectedSession = created;
+            ApplySession(created);
+            TrackSession(created.SessionId);
+            SetStatus("Created a Plinko session.");
+        }
+
+        await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task UpdateFeeAsync(decimal feePercent, CancellationToken cancellationToken = default)
+    public async Task UpdateFeeAsync(Guid sessionId, decimal feePercent, CancellationToken cancellationToken = default)
     {
-        var session = SelectedSession ?? throw new InvalidOperationException("Select a session.");
+        var session = GetSession(sessionId) ?? throw new InvalidOperationException("The session is not available.");
         var error = DealerInputValidator.ValidateFee(feePercent, session.State);
         if (error is not null)
         {
             throw new InvalidOperationException(error);
         }
 
+        var epoch = Volatile.Read(ref authorizationEpoch);
         var logicalOperation = $"session:{session.SessionId:D}:fee:{feePercent.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
         var key = financialKeys.GetOrCreate(logicalOperation);
-        SelectedSession = await api.UpdateSessionFeeAsync(session.SessionId, new UpdateSessionFeeRequest(feePercent), key, cancellationToken).ConfigureAwait(false);
+        var updated = await api.UpdateSessionFeeAsync(session.SessionId, new UpdateSessionFeeRequest(feePercent), key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
-        SetStatus("Session fee updated.");
+        lock (stateSync)
+        {
+            if (epoch != Volatile.Read(ref authorizationEpoch) || !api.IsAuthorized)
+            {
+                return;
+            }
+
+            ApplySession(updated);
+            SetStatus("Session fee updated.");
+        }
     }
 
-    public async Task OpenSessionAsync(CancellationToken cancellationToken = default)
+    public async Task OpenSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
-        var session = SelectedSession ?? throw new InvalidOperationException("Select a session.");
+        var session = GetSession(sessionId) ?? throw new InvalidOperationException("The session is not available.");
+        var epoch = Volatile.Read(ref authorizationEpoch);
         var logicalOperation = $"session:{session.SessionId:D}:open";
         var key = financialKeys.GetOrCreate(logicalOperation);
-        SelectedSession = await api.OpenSessionAsync(session.SessionId, key, cancellationToken).ConfigureAwait(false);
+        var updated = await api.OpenSessionAsync(session.SessionId, key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
-        await RefreshSessionsAsync(cancellationToken).ConfigureAwait(false);
-        SetStatus("Session opened.");
+        lock (stateSync)
+        {
+            if (epoch != Volatile.Read(ref authorizationEpoch) || !api.IsAuthorized)
+            {
+                return;
+            }
+
+            ApplySession(updated);
+            SetStatus("Session opened.");
+        }
+
+        await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task CloseSessionAsync(CancellationToken cancellationToken = default)
+    public async Task CloseSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
-        var session = SelectedSession ?? throw new InvalidOperationException("Select a session.");
+        var session = GetSession(sessionId) ?? throw new InvalidOperationException("The session is not available.");
+        var epoch = Volatile.Read(ref authorizationEpoch);
         var logicalOperation = $"session:{session.SessionId:D}:close";
         var key = financialKeys.GetOrCreate(logicalOperation);
-        SelectedSession = await api.CloseSessionAsync(session.SessionId, key, cancellationToken).ConfigureAwait(false);
+        var updated = await api.CloseSessionAsync(session.SessionId, key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
-        await RefreshSessionsAsync(cancellationToken).ConfigureAwait(false);
-        SetStatus("Session closed.");
+        lock (stateSync)
+        {
+            if (epoch != Volatile.Read(ref authorizationEpoch) || !api.IsAuthorized)
+            {
+                return;
+            }
+
+            ApplySession(updated);
+            SetStatus("Session closed.");
+        }
+
+        await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task CreateInviteAndTellAsync(string characterName, string homeWorld, CancellationToken cancellationToken = default)
+    public async Task CreateInviteAndTellAsync(
+        Guid sessionId,
+        string characterName,
+        string homeWorld,
+        CancellationToken cancellationToken = default)
     {
-        var session = SelectedSession ?? throw new InvalidOperationException("Select a session.");
+        _ = GetSession(sessionId) ?? throw new InvalidOperationException("The session is not available.");
         var error = DealerInputValidator.ValidateCharacter(characterName, homeWorld);
         if (error is not null)
         {
@@ -239,73 +386,176 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         }
 
         var invite = await api.CreateInviteAsync(
-            session.SessionId,
+            sessionId,
             new CreateInviteRequest(characterName, homeWorld),
             cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(invite.InviteUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+        if (invite.SessionId != sessionId ||
+            !string.Equals(invite.CharacterName, characterName, StringComparison.Ordinal) ||
+            !string.Equals(invite.HomeWorld, homeWorld, StringComparison.Ordinal) ||
+            !string.Equals(invite.InviteUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             invite.InviteUrl.OriginalString.Any(char.IsWhiteSpace))
         {
-            throw new InvalidDataException("The backend returned an unsafe invite URL.");
+            throw new InvalidDataException("The backend returned mismatched or unsafe invite data.");
         }
 
+        rosterStore.UpsertPendingInvite(new PendingInviteDto(
+            invite.InviteId,
+            invite.SessionId,
+            invite.CharacterName,
+            invite.HomeWorld,
+            DateTimeOffset.UtcNow,
+            invite.ExpiresAt));
+        nextRosterPoll = DateTimeOffset.MinValue;
         var command = GameChat.BuildTellCommand(characterName, homeWorld, invite.InviteUrl);
         await framework.Run(() => GameChat.SendCommand(command), cancellationToken).ConfigureAwait(false);
         SetStatus("The invite tell command was submitted locally; delivery is not confirmed.");
     }
 
-    public void PrepareDeposit(long amountGil)
+    public async Task CancelInviteAsync(Guid sessionId, Guid inviteId, CancellationToken cancellationToken = default)
     {
-        var session = SelectedSession ?? throw new InvalidOperationException("Select a session.");
-        var player = SelectedPlayer;
-        var error = DealerInputValidator.ValidateDeposit(player, amountGil);
+        await api.CancelInviteAsync(sessionId, inviteId, cancellationToken).ConfigureAwait(false);
+        rosterStore.RemovePendingInvite(sessionId, inviteId);
+        nextRosterPoll = DateTimeOffset.MinValue;
+        SetStatus("Invite cancelled.");
+    }
+
+    public void PrepareBalanceAdjustment(SessionPlayerKey player, long amountGil)
+    {
+        var rosterPlayer = RequireRosterPlayer(player);
+        var error = DealerInputValidator.ValidateBalanceAdjustment(amountGil);
         if (error is not null)
         {
             throw new InvalidOperationException(error);
         }
 
-        PendingDeposit = new DepositSubmission(session.SessionId, player!.PlayerId, amountGil);
-        SetStatus("Confirm the exact manual deposit before submitting it.");
+        balanceAdjustments[player] = new BalanceAdjustmentSubmission(player, amountGil);
+        SetStatus($"Confirm the signed balance adjustment for {rosterPlayer.CharacterName}@{rosterPlayer.HomeWorld}.");
     }
 
-    public void CancelPendingDeposit() => PendingDeposit = null;
-
-    public async Task SubmitDepositAsync(CancellationToken cancellationToken = default)
+    public void CancelBalanceAdjustment(SessionPlayerKey player)
     {
-        var submission = PendingDeposit ?? throw new InvalidOperationException("Prepare and confirm a deposit first.");
+        if (balanceAdjustments.TryGetValue(player, out var submission) &&
+            submission.State == DealerActionState.Failed && !submission.CanDiscardFailure)
+        {
+            throw new InvalidOperationException("Retry this ambiguous adjustment with its existing idempotency key.");
+        }
+
+        balanceAdjustments.TryRemove(player, out _);
+    }
+
+    public async Task SubmitBalanceAdjustmentAsync(SessionPlayerKey player, CancellationToken cancellationToken = default)
+    {
+        var submission = balanceAdjustments.GetValueOrDefault(player)
+            ?? throw new InvalidOperationException("Prepare and confirm a balance adjustment first.");
         submission.MarkSending();
         try
         {
-            var result = await api.CreateDepositAsync(
-                submission.SessionId,
-                new CreateManualDepositRequest(submission.PlayerId, submission.AmountGil),
+            await api.AdjustPlayerBalanceAsync(
+                player.SessionId,
+                player.MembershipId,
+                new AdjustPlayerBalanceRequest(submission.AmountGil),
                 submission.IdempotencyKey,
                 cancellationToken).ConfigureAwait(false);
-            submission.MarkSucceeded($"Recorded {result.AmountGil:N0} gil at {result.RecordedAt:u}.");
-            await hub.ReportDepositStatusAsync(submission.SessionId, submission.PlayerId, submission.IdempotencyKey, "succeeded").ConfigureAwait(false);
-            RecentDeposit = submission;
-            PendingDeposit = null;
-            await LoadPlayersAsync(submission.SessionId, cancellationToken).ConfigureAwait(false);
-            SetStatus(submission.ResultMessage!);
         }
         catch (Exception exception)
         {
-            submission.MarkFailed(exception.Message);
-            RecentDeposit = submission;
-            await hub.ReportDepositStatusAsync(submission.SessionId, submission.PlayerId, submission.IdempotencyKey, "failed", GetErrorCode(exception)).ConfigureAwait(false);
-            SetStatus($"Deposit failed. Retry uses the same idempotency key: {submission.ResultMessage}");
+            submission.MarkFailed(exception.Message, IsDefinitiveRejection(exception));
+            SetStatus($"Balance adjustment failed. Retry retains idempotency key {submission.IdempotencyKey:D}.");
             throw;
         }
+
+        submission.MarkSucceeded();
+        balanceAdjustments.TryRemove(player, out _);
+        ActionDrafts.SetBalanceAdjustment(player, string.Empty);
+        SetStatus($"Applied {submission.AmountGil:+#,0;-#,0} gil to the exact session member.");
+        await TryRefreshRosterAfterMutationAsync(player.SessionId, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task RetryRecentDepositAsync(CancellationToken cancellationToken = default)
+    public async Task RequestCashOutPreviewAsync(SessionPlayerKey player, CancellationToken cancellationToken = default)
     {
-        if (RecentDeposit?.State != DepositSubmissionState.Failed)
+        _ = RequireRosterPlayer(player);
+        if (cashOuts.TryGetValue(player, out var existing) && existing.State == DealerActionState.Sending)
         {
-            throw new InvalidOperationException("Only a failed deposit can be retried.");
+            throw new InvalidOperationException("A cash out is already being submitted for this member.");
         }
 
-        PendingDeposit = RecentDeposit;
-        await SubmitDepositAsync(cancellationToken).ConfigureAwait(false);
+        var preview = await api.GetPlayerCashOutPreviewAsync(player.SessionId, player.MembershipId, cancellationToken).ConfigureAwait(false);
+        cashOuts[player] = new CashOutSubmission(player, preview);
+        ActionDrafts.SetNetZeroConfirmation(player, false);
+        SetStatus("Review the backend cash-out preview before confirming.");
+    }
+
+    public void CancelCashOut(SessionPlayerKey player)
+    {
+        if (cashOuts.TryGetValue(player, out var submission) &&
+            submission.State == DealerActionState.Failed && !submission.CanDiscardFailure)
+        {
+            throw new InvalidOperationException("Retry this ambiguous cash out with its existing idempotency key.");
+        }
+
+        cashOuts.TryRemove(player, out _);
+        ActionDrafts.SetNetZeroConfirmation(player, false);
+    }
+
+    public async Task SubmitCashOutAsync(
+        SessionPlayerKey player,
+        bool confirmNetZero,
+        CancellationToken cancellationToken = default)
+    {
+        var submission = cashOuts.GetValueOrDefault(player)
+            ?? throw new InvalidOperationException("Fetch and review a cash-out preview first.");
+        if (submission.Preview.NetIsZero && !confirmNetZero)
+        {
+            throw new InvalidOperationException("Explicitly confirm the zero net payout before continuing.");
+        }
+
+        submission.MarkSending();
+        try
+        {
+            await api.StartPlayerCashOutAsync(
+                player.SessionId,
+                player.MembershipId,
+                new DealerCashOutRequest(
+                    true,
+                    confirmNetZero,
+                    submission.Preview.Gross,
+                    submission.Preview.Fee,
+                    submission.Preview.Net),
+                submission.IdempotencyKey,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            submission.MarkFailed(exception.Message, IsDefinitiveRejection(exception));
+            SetStatus($"Cash out failed. Retry retains idempotency key {submission.IdempotencyKey:D}.");
+            throw;
+        }
+
+        submission.MarkSucceeded();
+        cashOuts.TryRemove(player, out _);
+        ActionDrafts.SetNetZeroConfirmation(player, false);
+        SetStatus("The backend accepted the full-token cash out.");
+        await TryRefreshRosterAfterMutationAsync(player.SessionId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<SessionRemovalDto> DeleteSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var removal = await api.DeleteSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        if (removal.SessionId != sessionId)
+        {
+            throw new InvalidDataException("The backend returned a removal result for a different session.");
+        }
+
+        Sessions = Sessions.Where(item => item.SessionId != sessionId).ToArray();
+        if (SelectedSession?.SessionId == sessionId)
+        {
+            SelectedSession = null;
+            Interlocked.Increment(ref selectionRevision);
+        }
+
+        ClearSessionState(sessionId, notify: true);
+        SetStatus($"Session {removal.Mode}.");
+        return removal;
     }
 
     public async Task RequestCashoutRetryAsync(Guid operationId, CancellationToken cancellationToken = default)
@@ -323,8 +573,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         var key = financialKeys.GetOrCreate(logicalOperation);
         await api.RetryCashoutAsync(new RetryCashoutRequest(operationId, "dealerTriggered"), key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
-        await RefreshSessionsAsync(cancellationToken).ConfigureAwait(false);
         SetStatus("Backend payout retry requested. The plugin did not retry the trade directly.");
+        await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task SubmitReconciliationAsync(Guid operationId, string evidence, CancellationToken cancellationToken = default)
@@ -339,8 +589,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         var key = financialKeys.GetOrCreate(logicalOperation);
         await api.ReconcileCashoutAsync(new ReconcileCashoutRequest(operationId, normalizedEvidence), key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
-        await RefreshSessionsAsync(cancellationToken).ConfigureAwait(false);
         SetStatus("Payout evidence submitted to backend reconciliation.");
+        await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -361,7 +611,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             // Plugin disposal must continue even if the backend is unavailable.
         }
 
-        payoutCoordinator.Dispose();
+        await payoutCoordinator.DisposeAsync().ConfigureAwait(false);
         await hub.DisposeAsync().ConfigureAwait(false);
         api.Dispose();
         dropbox.Dispose();
@@ -387,6 +637,12 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         {
             nextHeartbeat = now.AddSeconds(30);
             RunBackground(SendHeartbeatAsync);
+        }
+
+        if (api.IsAuthorized && now >= nextRosterPoll)
+        {
+            nextRosterPoll = now.AddSeconds(rosterStore.HasUnexpiredPendingInvites(now) ? 5 : 30);
+            RunBackground(PollBackendStateAsync);
         }
     }
 
@@ -416,6 +672,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
                 !string.Equals(previous.CharacterName, current.CharacterName, StringComparison.Ordinal) ||
                 !string.Equals(previous.HomeWorld, current.HomeWorld, StringComparison.Ordinal)))
             {
+                InvalidateAuthorizationEpoch();
                 if (payoutCoordinator.ActiveOperation is { } activeOperation)
                 {
                     try
@@ -472,21 +729,14 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         }
 
         await hub.StartAsync(cancellationToken).ConfigureAwait(false);
-        await payoutCoordinator.ReplayOutboxAsync(cancellationToken).ConfigureAwait(false);
-        await RefreshSessionsAsync(cancellationToken).ConfigureAwait(false);
-        foreach (var operation in OpenPayoutOperations)
-        {
-            if (await payoutCoordinator.RecoverBackendOperationAsync(operation, cancellationToken).ConfigureAwait(false))
-            {
-                break;
-            }
-        }
+        await SynchronizeAfterHubConnectionAsync(cancellationToken).ConfigureAwait(false);
 
         nextHeartbeat = DateTimeOffset.MinValue;
     }
 
     private async Task RevokeAuthorizationAsync(string reason, CancellationToken cancellationToken)
     {
+        InvalidateAuthorizationEpoch();
         if (payoutCoordinator.ActiveOperation is { } activeOperation)
         {
             try
@@ -513,7 +763,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         await hub.StopAsync(cancellationToken).ConfigureAwait(false);
         await api.EnsureFreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
         await hub.StartAsync(cancellationToken).ConfigureAwait(false);
-        await payoutCoordinator.ReplayOutboxAsync(cancellationToken).ConfigureAwait(false);
+        await SynchronizeAfterHubConnectionAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task SendHeartbeatAsync(CancellationToken cancellationToken)
@@ -577,21 +827,237 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             compatibility.Version?.PluginInstanceId);
     }
 
-    private async Task LoadPlayersAsync(Guid sessionId, CancellationToken cancellationToken)
+    public Task RefreshRosterAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
-        Players = await api.GetPlayersAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        var selectedId = SelectedPlayer?.PlayerId;
-        SelectedPlayer = selectedId is null ? null : Players.FirstOrDefault(item => item.PlayerId == selectedId);
+        RequireAuthorization();
+        TrackSession(sessionId);
+        rosterStore.Invalidate(sessionId);
+        return rosterStore.RefreshAsync(sessionId, api.GetSessionRosterAsync, cancellationToken);
+    }
+
+    private async Task RefreshTrackedRostersAsync(long epoch, CancellationToken cancellationToken)
+    {
+        Guid[] sessionIds;
+        var availableSessionIds = Sessions.Select(session => session.SessionId).ToHashSet();
+        if (SelectedSession is { } selected)
+        {
+            availableSessionIds.Add(selected.SessionId);
+        }
+
+        lock (trackedSessionsSync)
+        {
+            sessionIds = trackedSessions.Where(availableSessionIds.Contains).ToArray();
+        }
+
+        foreach (var sessionId in sessionIds)
+        {
+            if (epoch != Volatile.Read(ref authorizationEpoch))
+            {
+                return;
+            }
+
+            rosterStore.Invalidate(sessionId);
+        }
+
+        await Task.WhenAll(sessionIds.Select(sessionId =>
+            rosterStore.RefreshAsync(sessionId, LoadRoster, cancellationToken))).ConfigureAwait(false);
+
+        async Task<SessionRosterDto> LoadRoster(Guid sessionId, CancellationToken token)
+        {
+            var roster = await api.GetSessionRosterAsync(sessionId, token).ConfigureAwait(false);
+            if (epoch != Volatile.Read(ref authorizationEpoch))
+            {
+                throw new OperationCanceledException("Dealer authorization changed while refreshing rosters.");
+            }
+
+            return roster;
+        }
+    }
+
+    private SessionRosterPlayerDto RequireRosterPlayer(SessionPlayerKey player)
+    {
+        var roster = rosterStore.Get(player.SessionId)
+            ?? throw new InvalidOperationException("The session roster has not loaded.");
+        return roster.Players.FirstOrDefault(item => item.MembershipId == player.MembershipId)
+            ?? throw new InvalidOperationException("The exact session member is no longer active.");
+    }
+
+    private void ApplySession(GameSessionDto session)
+    {
+        Sessions = Sessions.Any(item => item.SessionId == session.SessionId)
+            ? Sessions.Select(item => item.SessionId == session.SessionId ? session : item).ToArray()
+            : Sessions.Append(session).ToArray();
+        if (SelectedSession?.SessionId == session.SessionId)
+        {
+            SelectedSession = session;
+        }
     }
 
     private void ClearDealerState()
     {
-        Sessions = [];
-        SelectedSession = null;
-        Players = [];
-        SelectedPlayer = null;
-        OpenPayoutOperations = [];
-        PendingDeposit = null;
+        lock (stateSync)
+        {
+            Interlocked.Increment(ref authorizationEpoch);
+            Sessions = [];
+            SelectedSession = null;
+            OpenPayoutOperations = [];
+            LastReconciliationRequest = null;
+            rosterStore.Clear();
+            RemoveResolvedSubmissions();
+            ActionDrafts.Clear();
+            lock (trackedSessionsSync)
+            {
+                trackedSessions.Clear();
+            }
+
+            Interlocked.Increment(ref selectionRevision);
+            nextRosterPoll = DateTimeOffset.MinValue;
+        }
+    }
+
+    private void ClearSessionState(Guid sessionId, bool notify)
+    {
+        lock (trackedSessionsSync)
+        {
+            trackedSessions.Remove(sessionId);
+        }
+
+        rosterStore.Remove(sessionId);
+        ActionDrafts.RemoveSession(sessionId);
+        foreach (var player in balanceAdjustments.Keys.Where(item => item.SessionId == sessionId).ToArray())
+        {
+            if (balanceAdjustments.TryGetValue(player, out var submission) && !MustPreserve(submission.State, submission.CanDiscardFailure))
+            {
+                balanceAdjustments.TryRemove(player, out _);
+            }
+        }
+
+        foreach (var player in cashOuts.Keys.Where(item => item.SessionId == sessionId).ToArray())
+        {
+            if (cashOuts.TryGetValue(player, out var submission) && !MustPreserve(submission.State, submission.CanDiscardFailure))
+            {
+                cashOuts.TryRemove(player, out _);
+            }
+        }
+
+        if (notify)
+        {
+            SessionRemoved?.Invoke(sessionId);
+        }
+    }
+
+    private async Task TryRefreshRosterAfterMutationAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RefreshRosterAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            pluginLog.Warning("The mutation succeeded, but the roster refresh failed: {Message}", SecretRedactor.Redact(exception.Message));
+        }
+    }
+
+    private async Task TryRefreshSessionsAfterMutationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            pluginLog.Warning("The mutation succeeded, but the session refresh failed: {Message}", SecretRedactor.Redact(exception.Message));
+        }
+    }
+
+    private async Task PollBackendStateAsync(CancellationToken cancellationToken)
+    {
+        await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
+        await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SynchronizeAfterHubConnectionAsync(CancellationToken cancellationToken)
+    {
+        if (!api.IsAuthorized)
+        {
+            return;
+        }
+
+        await payoutCoordinator.ReplayOutboxAsync(cancellationToken).ConfigureAwait(false);
+        await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
+        await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task RecoverOpenPayoutAsync(CancellationToken cancellationToken)
+    {
+        foreach (var operation in OpenPayoutOperations)
+        {
+            if (await payoutCoordinator.RecoverBackendOperationAsync(operation, cancellationToken).ConfigureAwait(false))
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task RecoverHubConnectionAsync(CancellationToken cancellationToken)
+    {
+        await hubRecoveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var delay = TimeSpan.FromSeconds(2);
+            while (!disposed && api.IsAuthorized)
+            {
+                try
+                {
+                    await api.EnsureFreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+                    if (!hub.IsConnected)
+                    {
+                        await hub.StartAsync(cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await SynchronizeAfterHubConnectionAsync(cancellationToken).ConfigureAwait(false);
+                    SetStatus("Backend realtime connection restored.");
+                    return;
+                }
+                catch (Exception exception) when (!disposed && api.IsAuthorized)
+                {
+                    pluginLog.Warning("Catsino realtime reconnect failed: {Message}", SecretRedactor.Redact(exception.Message));
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 30));
+                }
+            }
+        }
+        finally
+        {
+            hubRecoveryGate.Release();
+        }
+    }
+
+    private void InvalidateAuthorizationEpoch()
+    {
+        lock (stateSync)
+        {
+            Interlocked.Increment(ref authorizationEpoch);
+        }
+    }
+
+    private void RemoveResolvedSubmissions()
+    {
+        foreach (var item in balanceAdjustments.ToArray())
+        {
+            if (!MustPreserve(item.Value.State, item.Value.CanDiscardFailure))
+            {
+                balanceAdjustments.TryRemove(item.Key, out _);
+            }
+        }
+
+        foreach (var item in cashOuts.ToArray())
+        {
+            if (!MustPreserve(item.Value.State, item.Value.CanDiscardFailure))
+            {
+                cashOuts.TryRemove(item.Key, out _);
+            }
+        }
     }
 
     private void RequireAuthorization()
@@ -620,6 +1086,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     private void SetStatus(string message) => StatusMessage = SecretRedactor.Redact(message);
 
-    private static string GetErrorCode(Exception exception) =>
-        exception is BackendApiException apiException ? apiException.ErrorCode : "clientError";
+    private static bool IsDefinitiveRejection(Exception exception) =>
+        exception is BackendApiException apiException && (int)apiException.StatusCode < 500;
+
+    private static bool MustPreserve(DealerActionState state, bool canDiscardFailure) =>
+        state == DealerActionState.Sending || state == DealerActionState.Failed && !canDiscardFailure;
 }

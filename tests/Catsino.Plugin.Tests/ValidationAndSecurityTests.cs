@@ -36,6 +36,21 @@ public sealed class ValidationAndSecurityTests
         Assert.False(DealerInputValidator.TryParseGil("1.5", out _));
     }
 
+    [Theory]
+    [InlineData("500", 500L)]
+    [InlineData("+500", 500L)]
+    [InlineData("-500", -500L)]
+    public void SignedBalanceAdjustmentAllowsPositiveAndNegativeButNotZero(string text, long expected)
+    {
+        Assert.True(DealerInputValidator.TryParseBalanceAdjustment(text, out var amount));
+        Assert.Equal(expected, amount);
+        Assert.Null(DealerInputValidator.ValidateBalanceAdjustment(amount));
+        Assert.False(DealerInputValidator.TryParseBalanceAdjustment("0", out _));
+        Assert.NotNull(DealerInputValidator.ValidateBalanceAdjustment(0));
+        Assert.False(DealerInputValidator.TryParseBalanceAdjustment(long.MinValue.ToString(), out _));
+        Assert.NotNull(DealerInputValidator.ValidateBalanceAdjustment(long.MinValue));
+    }
+
     [Fact]
     public void FailedDepositRetryRetainsIdempotencyKeyAndRedactsSecrets()
     {

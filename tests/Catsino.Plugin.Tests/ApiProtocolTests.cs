@@ -20,18 +20,20 @@ public sealed class ApiProtocolTests
         var sessionId = ProtocolHandler.SessionId;
         var playerId = ProtocolHandler.PlayerId;
         var operationId = ProtocolHandler.OperationId;
-        var keys = Enumerable.Range(0, 7).Select(_ => Guid.NewGuid()).ToArray();
+        var keys = Enumerable.Range(0, 9).Select(_ => Guid.NewGuid()).ToArray();
         await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", 0m), keys[0]);
         await api.UpdateSessionFeeAsync(sessionId, new UpdateSessionFeeRequest(5m), keys[1]);
         await api.OpenSessionAsync(sessionId, keys[2]);
         await api.CloseSessionAsync(sessionId, keys[3]);
         await api.CreateInviteAsync(sessionId, new CreateInviteRequest("Exact Player", "Ragnarok"));
         await api.CreateDepositAsync(sessionId, new CreateManualDepositRequest(playerId, 100), keys[4]);
+        var adjustedPlayer = await api.AdjustPlayerBalanceAsync(sessionId, playerId, new AdjustPlayerBalanceRequest(-100), keys[5]);
+        var zeroTokenCashOut = await api.StartPlayerCashOutAsync(sessionId, playerId, new DealerCashOutRequest(true, true, 0, 0, 0), keys[6]);
         var payoutEvent = TestData.PayoutEvent() with { OperationId = operationId, SequenceNumber = 7 };
         await api.ReportPayoutEventAsync(payoutEvent);
         await api.AcknowledgePayoutEventAsync(new PayoutEventAckDto(operationId, 7, DateTimeOffset.UtcNow));
-        await api.RetryCashoutAsync(new RetryCashoutRequest(operationId, "dealerTriggered"), keys[5]);
-        await api.ReconcileCashoutAsync(new ReconcileCashoutRequest(operationId, "evidence"), keys[6]);
+        await api.RetryCashoutAsync(new RetryCashoutRequest(operationId, "dealerTriggered"), keys[7]);
+        await api.ReconcileCashoutAsync(new ReconcileCashoutRequest(operationId, "evidence"), keys[8]);
 
         AssertMutation(handler, HttpMethod.Post, "/api/v1/game-sessions", keys[0]);
         AssertMutation(handler, HttpMethod.Patch, $"/api/v1/game-sessions/{sessionId:D}/fee", keys[1]);
@@ -39,14 +41,20 @@ public sealed class ApiProtocolTests
         AssertMutation(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/close", keys[3]);
         AssertNoIdempotency(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/invites");
         AssertMutation(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/deposits", keys[4]);
+        AssertMutation(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/players/{playerId:D}/balance-adjustments", keys[5]);
+        AssertMutation(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/players/{playerId:D}/cashouts", keys[6]);
         AssertMutation(handler, HttpMethod.Post, "/api/v1/payout-events", FinancialIdempotency.ForPayoutEvent(operationId, 7));
         AssertMutation(
             handler,
             HttpMethod.Post,
             $"/api/v1/payout-events/{operationId:D}/7/ack",
             FinancialIdempotency.ForPayoutAcknowledgment(operationId, 7));
-        AssertMutation(handler, HttpMethod.Post, $"/api/v1/cashouts/{operationId:D}/retry", keys[5]);
-        AssertMutation(handler, HttpMethod.Post, $"/api/v1/cashouts/{operationId:D}/reconciliation", keys[6]);
+        AssertMutation(handler, HttpMethod.Post, $"/api/v1/cashouts/{operationId:D}/retry", keys[7]);
+        AssertMutation(handler, HttpMethod.Post, $"/api/v1/cashouts/{operationId:D}/reconciliation", keys[8]);
+        AssertBody(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/players/{playerId:D}/balance-adjustments", "{\"amountGil\":-100}");
+        AssertBody(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/players/{playerId:D}/cashouts", "{\"confirmAllAvailable\":true,\"confirmNetZero\":true,\"expectedGross\":0,\"expectedFee\":0,\"expectedNet\":0}");
+        Assert.Equal(playerId, adjustedPlayer.MembershipId);
+        Assert.Null(zeroTokenCashOut);
     }
 
     [Fact]
@@ -77,14 +85,19 @@ public sealed class ApiProtocolTests
         var pairingId = ProtocolHandler.PairingId;
         var character = new CharacterIdentityDto("Exact Dealer", "Ragnarok", "Ragnarok", true);
         var dropbox = new DropboxCapabilitiesDto(false, null, null, [], false, null);
-        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.0.0", "1.0.0", dropbox));
+        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.0", "1.1.0", dropbox));
         await api.SendHeartbeatAsync(new PluginHeartbeatRequest(
-            pairingId, Guid.NewGuid(), character, "1.0.0", "1.0.0", dropbox, 0, DateTimeOffset.UtcNow));
+            pairingId, Guid.NewGuid(), character, "1.1.0", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
         await api.ReportDropboxStatusAsync(new DropboxStatusDto(false, false, false, null, "unavailable", DateTimeOffset.UtcNow));
         await api.GetSessionsAsync();
         await api.GetActiveSessionAsync();
         await api.GetSessionAsync(ProtocolHandler.SessionId);
         await api.GetPlayersAsync(ProtocolHandler.SessionId);
+        await api.GetSessionRosterAsync(ProtocolHandler.SessionId);
+        await api.GetPendingInvitesAsync(ProtocolHandler.SessionId);
+        await api.CancelInviteAsync(ProtocolHandler.SessionId, ProtocolHandler.InviteId);
+        await api.GetPlayerCashOutPreviewAsync(ProtocolHandler.SessionId, ProtocolHandler.PlayerId);
+        var removal = await api.DeleteSessionAsync(ProtocolHandler.SessionId);
         await api.GetOpenPayoutOperationsAsync();
         await api.DisconnectAsync();
 
@@ -96,8 +109,14 @@ public sealed class ApiProtocolTests
         AssertRoute(handler, HttpMethod.Get, "/api/v1/game-sessions/active");
         AssertRoute(handler, HttpMethod.Get, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}");
         AssertRoute(handler, HttpMethod.Get, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}/players");
+        AssertRoute(handler, HttpMethod.Get, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}/roster");
+        AssertRoute(handler, HttpMethod.Get, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}/invites");
+        AssertRoute(handler, HttpMethod.Delete, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}/invites/{ProtocolHandler.InviteId:D}");
+        AssertRoute(handler, HttpMethod.Get, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}/players/{ProtocolHandler.PlayerId:D}/cashout-preview");
+        AssertRoute(handler, HttpMethod.Delete, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}");
         AssertRoute(handler, HttpMethod.Get, "/api/v1/payout-operations/open");
         AssertRoute(handler, HttpMethod.Post, "/api/v1/dealers/disconnect");
+        Assert.Equal("archived", removal.Mode);
     }
 
     [Fact]
@@ -160,6 +179,12 @@ public sealed class ApiProtocolTests
         Assert.Null(request.IdempotencyKey);
     }
 
+    private static void AssertBody(ProtocolHandler handler, HttpMethod method, string path, string expected)
+    {
+        var request = Assert.Single(handler.Requests, item => item.Method == method && item.Path == path);
+        Assert.Equal(expected, request.Body);
+    }
+
     private sealed class MemoryCredentialStore : IProtectedCredentialStore
     {
         private string? value;
@@ -185,6 +210,7 @@ public sealed class ApiProtocolTests
         internal static readonly Guid PlayerId = Guid.Parse("20000000-0000-0000-0000-000000000002");
         internal static readonly Guid OperationId = Guid.Parse("30000000-0000-0000-0000-000000000003");
         internal static readonly Guid PairingId = Guid.Parse("40000000-0000-0000-0000-000000000004");
+        internal static readonly Guid InviteId = Guid.Parse("60000000-0000-0000-0000-000000000006");
         private bool rejectedSessionCreate;
 
         internal List<CapturedRequest> Requests { get; } = [];
@@ -199,7 +225,8 @@ public sealed class ApiProtocolTests
             var idempotencyKey = request.Headers.TryGetValues("Idempotency-Key", out var values)
                 ? Guid.Parse(Assert.Single(values))
                 : (Guid?)null;
-            Requests.Add(new CapturedRequest(request.Method, path, idempotencyKey));
+            var requestBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            Requests.Add(new CapturedRequest(request.Method, path, idempotencyKey, requestBody));
 
             if (RejectFirstSessionCreate && !rejectedSessionCreate && request.Method == HttpMethod.Post && path == "/api/v1/game-sessions")
             {
@@ -223,15 +250,20 @@ public sealed class ApiProtocolTests
                 ("GET", "/api/v1/game-sessions/active") => Session(GameSessionState.Open),
                 ("GET", var value) when value == $"/api/v1/game-sessions/{SessionId:D}" => Session(GameSessionState.Open),
                 ("GET", var value) when value.EndsWith("/players", StringComparison.Ordinal) => new[] { TestData.Player(SessionPlayerState.Open) },
+                ("GET", var value) when value.EndsWith("/roster", StringComparison.Ordinal) => Roster(),
+                ("GET", var value) when value.EndsWith("/invites", StringComparison.Ordinal) => Roster().PendingInvites,
+                ("GET", var value) when value.EndsWith("/cashout-preview", StringComparison.Ordinal) => CashOutPreview(),
                 ("GET", "/api/v1/payout-operations/open") => new[] { PayoutOperation() },
+                ("DELETE", var value) when value == $"/api/v1/game-sessions/{SessionId:D}" => new SessionRemovalDto(SessionId, "archived"),
                 ("POST", "/api/v1/game-sessions") => Session(GameSessionState.Created),
                 (_, var value) when value.EndsWith("/fee", StringComparison.Ordinal) => Session(GameSessionState.Created),
                 (_, var value) when value.EndsWith("/open", StringComparison.Ordinal) => Session(GameSessionState.Open),
                 (_, var value) when value.EndsWith("/close", StringComparison.Ordinal) => Session(GameSessionState.Closing),
-                (_, var value) when value.EndsWith("/invites", StringComparison.Ordinal) => new InviteDto(
-                    Guid.NewGuid(), SessionId, "Exact Player", "Ragnarok", new Uri("https://localhost/invite"), DateTimeOffset.UtcNow.AddMinutes(5)),
+                ("POST", var value) when value.EndsWith("/invites", StringComparison.Ordinal) => new InviteDto(
+                    InviteId, SessionId, "Exact Player", "Ragnarok", new Uri("https://localhost/invite"), DateTimeOffset.UtcNow.AddMinutes(5)),
                 (_, var value) when value.EndsWith("/deposits", StringComparison.Ordinal) => new DepositDto(
                     Guid.NewGuid(), SessionId, PlayerId, 100, idempotencyKey!.Value, DateTimeOffset.UtcNow),
+                ("POST", var value) when value.EndsWith("/balance-adjustments", StringComparison.Ordinal) => Roster().Players[0],
                 ("POST", "/api/v1/payout-events") => new PayoutEventAckDto(OperationId, 7, DateTimeOffset.UtcNow),
                 (_, var value) when value.Contains("/cashouts/", StringComparison.Ordinal) => PayoutOperation(),
                 _ => null,
@@ -267,7 +299,19 @@ public sealed class ApiProtocolTests
             "failed",
             "Failed.",
             DateTimeOffset.UtcNow);
+
+        private static SessionRosterDto Roster()
+        {
+            var now = DateTimeOffset.UtcNow;
+            return new SessionRosterDto(
+                SessionId,
+                [new SessionRosterPlayerDto(PlayerId, SessionId, "Exact Player", "Ragnarok", 100, 20, 120, 0, false, "none", "clear", now)],
+                [new PendingInviteDto(InviteId, SessionId, "Other Player", "Phoenix", now, now.AddMinutes(2))],
+                now);
+        }
+
+        private static CashOutPreviewResponse CashOutPreview() => new(120, 5m, 6, 114, false, []);
     }
 
-    private sealed record CapturedRequest(HttpMethod Method, string Path, Guid? IdempotencyKey);
+    private sealed record CapturedRequest(HttpMethod Method, string Path, Guid? IdempotencyKey, string? Body);
 }

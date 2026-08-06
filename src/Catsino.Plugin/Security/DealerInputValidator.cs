@@ -48,11 +48,17 @@ public static partial class DealerInputValidator
             : null;
     }
 
+    public static string? ValidateBalanceAdjustment(long amountGil) =>
+        amountGil is 0 or long.MinValue ? "Balance adjustment must be non-zero and representable." : null;
+
     public static bool TryParseFee(string text, out decimal fee) =>
         decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out fee);
 
     public static bool TryParseGil(string text, out long amount) =>
         long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out amount);
+
+    public static bool TryParseBalanceAdjustment(string text, out long amount) =>
+        long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out amount) && amount is not (0 or long.MinValue);
 
     [GeneratedRegex("^[\\p{L}][\\p{L}'-]{1,14} [\\p{L}][\\p{L}'-]{1,14}$", RegexOptions.CultureInvariant)]
     private static partial Regex CharacterNameRegex();

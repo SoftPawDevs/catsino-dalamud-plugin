@@ -11,12 +11,12 @@ public sealed class ProtocolFixtureTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "backend-v1.fixture.json")));
         var root = document.RootElement;
-        Assert.Equal("1.0.0", root.GetProperty("contractVersion").GetString());
+        Assert.Equal("1.1.0", root.GetProperty("contractVersion").GetString());
         var routes = root.GetProperty("routes").EnumerateArray().ToArray();
-        Assert.Equal(21, routes.Length);
+        Assert.Equal(28, routes.Length);
 
         var financialRoutes = routes.Where(route => route.GetProperty("financialMutation").GetBoolean()).ToArray();
-        Assert.Equal(9, financialRoutes.Length);
+        Assert.Equal(11, financialRoutes.Length);
         Assert.All(financialRoutes, route => Assert.True(route.GetProperty("idempotencyKeyRequired").GetBoolean()));
         var inviteRoute = Assert.Single(routes, route => route.GetProperty("operation").GetString() == "createInvite");
         Assert.False(inviteRoute.GetProperty("financialMutation").GetBoolean());
@@ -60,6 +60,17 @@ public sealed class ProtocolFixtureTests
             Guid.NewGuid(), "plinko", 0m, GameSessionState.Closing, 1, 100, "pending", "clear", now, now, now));
         AssertDefinitionMatches(root, "SessionPlayerDto", new SessionPlayerDto(
             Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", SessionPlayerState.Open, 100, 50, "pending", "clear", now));
+        AssertDefinitionMatches(root, "SessionRosterPlayerDto", new SessionRosterPlayerDto(
+            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 100, 25, 125, 10, false, "none", "clear", now));
+        AssertDefinitionMatches(root, "PendingInviteDto", new PendingInviteDto(
+            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", now, now.AddMinutes(2)));
+        AssertDefinitionMatches(root, "SessionRosterDto", new SessionRosterDto(Guid.NewGuid(), [], [], now));
+        AssertDefinitionMatches(root, "AdjustPlayerBalanceRequest", new AdjustPlayerBalanceRequest(-100));
+        AssertDefinitionMatches(root, "DealerCashOutRequest", new DealerCashOutRequest(true, false, 100, 5, 95));
+        AssertDefinitionMatches(root, "SessionRemovalDto", new SessionRemovalDto(Guid.NewGuid(), "archived"));
+        AssertDefinitionMatches(root, "CashOutPreviewResponse", new CashOutPreviewResponse(100, 5m, 5, 95, false, []));
+        AssertDefinitionMatches(root, "CashOutResponse", new CashOutResponse(
+            Guid.NewGuid(), Guid.NewGuid(), 100, 5m, 5, 95, "queued", 0, 0, [], now));
         AssertDefinitionMatches(root, "DepositDto", new DepositDto(
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 100, Guid.NewGuid(), now));
         AssertDefinitionMatches(root, "PayoutOperationDto", new PayoutOperationDto(
@@ -77,6 +88,9 @@ public sealed class ProtocolFixtureTests
         Assert.Equal("string", definitions.GetProperty("SessionPlayerDto").GetProperty("reconciliationState").GetString());
         Assert.Equal("guid", definitions.GetProperty("DepositDto").GetProperty("idempotencyKey").GetString());
         Assert.Equal("utcDateTimeOffset", definitions.GetProperty("DepositDto").GetProperty("recordedAt").GetString());
+        Assert.Equal("int64", definitions.GetProperty("SessionRosterPlayerDto").GetProperty("netGil").GetString());
+        Assert.Equal("int64", definitions.GetProperty("SessionRosterPlayerDto").GetProperty("tokens").GetString());
+        Assert.Equal("int64", definitions.GetProperty("AdjustPlayerBalanceRequest").GetProperty("amountGil").GetString());
 
         Assert.Equal(
             SerializeEnumValues<GameSessionState>(),

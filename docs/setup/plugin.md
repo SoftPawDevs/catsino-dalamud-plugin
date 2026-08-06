@@ -5,7 +5,7 @@
 - Windows x64
 - .NET SDK 10.0.302 or a compatible later 10.0 feature band
 - Dalamud API 15 development files
-- A compatible Catsino backend using contract v1.0.0
+- A compatible Catsino backend using contract v1.1.0
 - The supported Catsino Dropbox fork for payouts
 
 ## Backend URL

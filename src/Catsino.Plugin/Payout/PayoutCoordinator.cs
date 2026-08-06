@@ -16,7 +16,7 @@ public sealed class BackendPayoutEventTransport(CatsinoApiClient api) : IPayoutE
         api.ReportPayoutEventAsync(payoutEvent, cancellationToken);
 }
 
-public sealed class PayoutCoordinator : IDisposable
+public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
 {
     private readonly IDropboxPayoutClient dropbox;
     private readonly IPayoutOutbox outbox;
@@ -26,7 +26,11 @@ public sealed class PayoutCoordinator : IDisposable
     private readonly SemaphoreSlim eventGate = new(1, 1);
     private readonly SemaphoreSlim drainGate = new(1, 1);
     private readonly HashSet<Guid> terminalOperations = [];
+    private readonly object backgroundSync = new();
+    private readonly HashSet<Task> backgroundTasks = [];
+    private readonly CancellationTokenSource shutdown = new();
     private ActivePayout? active;
+    private Task? disposeTask;
     private bool disposed;
 
     public PayoutCoordinator(
@@ -169,26 +173,46 @@ public sealed class PayoutCoordinator : IDisposable
 
     public Task ReplayOutboxAsync(CancellationToken cancellationToken = default) => DrainOutboxAsync(cancellationToken);
 
-    public void Dispose()
-    {
-        if (disposed)
-        {
-            return;
-        }
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-        disposed = true;
-        dropbox.TradeEventReceived -= OnTradeEventReceived;
-        eventGate.Dispose();
-        drainGate.Dispose();
+    public ValueTask DisposeAsync()
+    {
+        lock (backgroundSync)
+        {
+            if (disposeTask is null)
+            {
+                disposed = true;
+                dropbox.TradeEventReceived -= OnTradeEventReceived;
+                shutdown.Cancel();
+                disposeTask = FinishDisposeAsync(backgroundTasks.ToArray());
+            }
+
+            return new ValueTask(disposeTask);
+        }
     }
 
-    private void OnTradeEventReceived(DropboxTradeEvent tradeEvent) => _ = PersistAndSendAsync(tradeEvent);
-
-    private async Task PersistAndSendAsync(DropboxTradeEvent tradeEvent)
+    private void OnTradeEventReceived(DropboxTradeEvent tradeEvent)
     {
-        await eventGate.WaitAsync().ConfigureAwait(false);
+        lock (backgroundSync)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            var task = PersistAndSendAsync(tradeEvent, shutdown.Token);
+            backgroundTasks.Add(task);
+            _ = ObserveBackgroundAsync(task);
+        }
+    }
+
+    private async Task PersistAndSendAsync(DropboxTradeEvent tradeEvent, CancellationToken cancellationToken)
+    {
+        var entered = false;
         try
         {
+            await eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            entered = true;
             var execution = active;
             if (execution is null || !MatchesExactly(execution, tradeEvent))
             {
@@ -211,7 +235,7 @@ public sealed class PayoutCoordinator : IDisposable
                 tradeEvent.IsAmbiguous);
 
             // The durable atomic write always precedes any network send.
-            await outbox.EnqueueAsync(payoutEvent).ConfigureAwait(false);
+            await outbox.EnqueueAsync(payoutEvent, cancellationToken).ConfigureAwait(false);
             UpdateOperation(execution.Leg, tradeEvent);
 
             if (IsTerminal(tradeEvent))
@@ -221,6 +245,10 @@ public sealed class PayoutCoordinator : IDisposable
                 active = null;
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
         catch (Exception exception)
         {
             reportStatus($"Payout event remains local: {exception.Message}");
@@ -228,10 +256,58 @@ public sealed class PayoutCoordinator : IDisposable
         }
         finally
         {
-            eventGate.Release();
+            if (entered)
+            {
+                eventGate.Release();
+            }
         }
 
-        await DrainOutboxAsync().ConfigureAwait(false);
+        await DrainOutboxAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ObserveBackgroundAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+        {
+            // Expected during plugin shutdown.
+        }
+        catch (Exception exception)
+        {
+            reportStatus($"Payout event processing stopped: {exception.Message}");
+        }
+        finally
+        {
+            lock (backgroundSync)
+            {
+                backgroundTasks.Remove(task);
+            }
+        }
+    }
+
+    private async Task FinishDisposeAsync(Task[] pendingTasks)
+    {
+        try
+        {
+            await Task.WhenAll(pendingTasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+        {
+            // Cancellation is how pending HTTP and file work is stopped safely.
+        }
+        catch (Exception exception)
+        {
+            reportStatus($"Payout shutdown completed after a background error: {exception.Message}");
+        }
+        finally
+        {
+            eventGate.Dispose();
+            drainGate.Dispose();
+            shutdown.Dispose();
+        }
     }
 
     private async Task DrainOutboxAsync(CancellationToken cancellationToken = default)

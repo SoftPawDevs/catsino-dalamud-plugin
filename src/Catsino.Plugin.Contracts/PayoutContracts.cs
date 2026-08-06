@@ -69,3 +69,36 @@ public sealed record ReconcileCashoutRequest(Guid OperationId, string DealerEvid
 public sealed record CancelPayoutOperationDto(Guid OperationId, string Reason);
 
 public sealed record ReconciliationRequestDto(Guid OperationId, string Reason);
+
+public sealed record CashOutLegPreview(int Number, long Gross, long Fee, long Net);
+
+public sealed record CashOutPreviewResponse(
+    long Gross,
+    decimal FeePercent,
+    long Fee,
+    long Net,
+    bool NetIsZero,
+    IReadOnlyList<CashOutLegPreview> Legs);
+
+public sealed record PayoutLegResponse(
+    Guid Id,
+    int Number,
+    long Gross,
+    long Fee,
+    long Net,
+    string Status,
+    int Attempt,
+    Guid? OperationId);
+
+public sealed record CashOutResponse(
+    Guid Id,
+    Guid SessionId,
+    long Gross,
+    decimal FeePercent,
+    long Fee,
+    long Net,
+    string Status,
+    long PaidGross,
+    long PaidNet,
+    IReadOnlyList<PayoutLegResponse> Legs,
+    DateTimeOffset CreatedAt);

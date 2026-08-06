@@ -1,38 +1,39 @@
-using System.Globalization;
+using System.Collections.Concurrent;
 using System.Numerics;
 using Catsino.Plugin.Backend;
 using Catsino.Plugin.Contracts;
 using Catsino.Plugin.Runtime;
 using Catsino.Plugin.Security;
-using Catsino.Plugin.Workflow;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
 namespace Catsino.Plugin.Ui;
 
-public sealed class CatsinoWindow(CatsinoRuntime runtime) : Window("Catsino###CatsinoMainWindow")
+public sealed class CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer sessionPanel) : Window("Catsino###CatsinoMainWindow")
 {
     private string activationJwt = string.Empty;
     private string createFee = "0";
-    private string editFee = "0";
-    private string inviteName = string.Empty;
-    private string inviteWorld = string.Empty;
-    private string depositGil = string.Empty;
     private string reconciliationEvidence = string.Empty;
     private string validationMessage = string.Empty;
     private bool busy;
+    private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
 
     public override void PreDraw()
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(620, 480),
+            MinimumSize = new Vector2(900, 480),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
     }
 
     public override void Draw()
     {
+        while (pendingUiUpdates.TryDequeue(out var update))
+        {
+            update();
+        }
+
         DrawHeader();
         if (!ImGui.BeginTabBar("CatsinoTabs"))
         {
@@ -150,148 +151,22 @@ public sealed class CatsinoWindow(CatsinoRuntime runtime) : Window("Catsino###Ca
             if (ImGui.Selectable($"{session.GameType} | {session.State}##{session.SessionId:D}", selected))
             {
                 Run(() => runtime.SelectSessionAsync(session.SessionId));
-                editFee = session.FeePercent.ToString(CultureInfo.InvariantCulture);
             }
         }
 
         ImGui.EndChild();
         ImGui.SameLine();
         ImGui.BeginGroup();
-        DrawSelectedSession();
-        ImGui.EndGroup();
-    }
-
-    private void DrawSelectedSession()
-    {
-        var session = runtime.SelectedSession;
-        if (session is null)
+        var selectedSessionId = runtime.SelectedSession?.SessionId;
+        if (selectedSessionId is null)
         {
             ImGui.TextDisabled("Select a session.");
-            return;
         }
-
-        ImGui.TextUnformatted($"{session.GameType} | {session.State} | {session.PlayerCount} players");
-        ImGui.TextUnformatted($"Deposited: {session.TotalDepositedGil:N0} gil");
-        ImGui.TextUnformatted($"Payout: {session.PayoutState} | Reconciliation: {session.ReconciliationState}");
-
-        var feeLocked = session.State != GameSessionState.Created;
-        BeginDisabled(feeLocked || busy);
-        ImGui.SetNextItemWidth(100);
-        ImGui.InputText("Fee %", ref editFee, 16, ImGuiInputTextFlags.CharsDecimal);
-        ImGui.SameLine();
-        if (ImGui.Button("Update fee") && DealerInputValidator.TryParseFee(editFee, out var fee))
+        else
         {
-            Run(() => runtime.UpdateFeeAsync(fee));
+            sessionPanel.Draw(selectedSessionId.Value);
         }
-        else if (ImGui.IsItemClicked())
-        {
-            validationMessage = "Fee must be a decimal from 0 to 100.";
-        }
-
-        EndDisabled(feeLocked || busy);
-        if (feeLocked)
-        {
-            ImGui.TextDisabled("Fee is locked after Created.");
-        }
-
-        BeginDisabled(busy || session.State != GameSessionState.Created);
-        if (ImGui.Button("Open session"))
-        {
-            Run(() => runtime.OpenSessionAsync());
-        }
-
-        EndDisabled(busy || session.State != GameSessionState.Created);
-        ImGui.SameLine();
-        BeginDisabled(busy || session.State != GameSessionState.Open);
-        if (ImGui.Button("Close session"))
-        {
-            Run(() => runtime.CloseSessionAsync());
-        }
-
-        EndDisabled(busy || session.State != GameSessionState.Open);
-        Section("Invite exact player");
-        ImGui.SetNextItemWidth(180);
-        ImGui.InputText("Character name", ref inviteName, 32);
-        ImGui.SetNextItemWidth(180);
-        ImGui.InputText("Home World", ref inviteWorld, 32);
-        BeginDisabled(busy || session.State == GameSessionState.Closed);
-        if (ImGui.Button("Create invite and send /tell"))
-        {
-            Run(() => runtime.CreateInviteAndTellAsync(inviteName.Trim(), inviteWorld.Trim()));
-        }
-
-        EndDisabled(busy || session.State == GameSessionState.Closed);
-        Section("Exact session players");
-        foreach (var player in runtime.Players)
-        {
-            var selected = runtime.SelectedPlayer?.PlayerId == player.PlayerId;
-            if (ImGui.Selectable($"{player.CharacterName}@{player.HomeWorld} | {player.State} | {player.DepositedGil:N0} gil##{player.PlayerId:D}", selected))
-            {
-                runtime.SelectPlayer(player.PlayerId);
-            }
-
-            if (selected)
-            {
-                ImGui.Indent();
-                ImGui.TextUnformatted($"Payout: {player.PayoutState} | Reconciliation: {player.ReconciliationState}");
-                ImGui.Unindent();
-            }
-        }
-
-        DrawDeposit();
-    }
-
-    private void DrawDeposit()
-    {
-        Section("Manual deposit");
-        ImGui.TextDisabled("Dropbox never handles inbound trades or deposits.");
-        ImGui.SetNextItemWidth(180);
-        ImGui.InputText("Whole gil", ref depositGil, 20, ImGuiInputTextFlags.CharsDecimal);
-        var player = runtime.SelectedPlayer;
-        BeginDisabled(busy || player?.State != SessionPlayerState.Open || runtime.PendingDeposit is not null);
-        if (ImGui.Button("Review deposit") && DealerInputValidator.TryParseGil(depositGil, out var amount))
-        {
-            TryUiAction(() => runtime.PrepareDeposit(amount));
-        }
-        else if (ImGui.IsItemClicked())
-        {
-            validationMessage = "Deposit must be a positive whole gil amount.";
-        }
-
-        EndDisabled(busy || player?.State != SessionPlayerState.Open || runtime.PendingDeposit is not null);
-
-        if (runtime.PendingDeposit is { } pending)
-        {
-            ImGui.TextWrapped($"Confirm {pending.AmountGil:N0} gil for the selected exact player. Key: {pending.IdempotencyKey:D}");
-            BeginDisabled(busy);
-            if (ImGui.Button("Confirm deposit"))
-            {
-                Run(() => runtime.SubmitDepositAsync());
-            }
-
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel"))
-            {
-                runtime.CancelPendingDeposit();
-            }
-
-            EndDisabled(busy);
-        }
-
-        if (runtime.RecentDeposit is { } recent)
-        {
-            ImGui.TextWrapped($"Recent {recent.State}: {recent.ResultMessage} Key: {recent.IdempotencyKey:D}");
-            if (recent.State == DepositSubmissionState.Failed)
-            {
-                BeginDisabled(busy);
-                if (ImGui.Button("Retry with same key"))
-                {
-                    Run(() => runtime.RetryRecentDepositAsync());
-                }
-
-                EndDisabled(busy);
-            }
-        }
+        ImGui.EndGroup();
     }
 
     private void DrawPayouts()
@@ -387,27 +262,16 @@ public sealed class CatsinoWindow(CatsinoRuntime runtime) : Window("Catsino###Ca
         try
         {
             await action().ConfigureAwait(false);
+            pendingUiUpdates.Enqueue(() => busy = false);
         }
         catch (Exception exception)
         {
-            validationMessage = SecretRedactor.Redact(exception.Message);
-        }
-        finally
-        {
-            busy = false;
-        }
-    }
-
-    private void TryUiAction(Action action)
-    {
-        validationMessage = string.Empty;
-        try
-        {
-            action();
-        }
-        catch (Exception exception)
-        {
-            validationMessage = SecretRedactor.Redact(exception.Message);
+            var message = SecretRedactor.Redact(exception.Message);
+            pendingUiUpdates.Enqueue(() =>
+            {
+                validationMessage = message;
+                busy = false;
+            });
         }
     }
 

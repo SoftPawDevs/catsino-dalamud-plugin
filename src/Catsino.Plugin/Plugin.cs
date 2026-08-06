@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Catsino.Plugin.Runtime;
 using Catsino.Plugin.Ui;
 using Dalamud.Game.Command;
@@ -15,6 +16,10 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem = new("Catsino");
     private readonly CatsinoRuntime runtime;
     private readonly CatsinoWindow window;
+    private readonly SessionPanelRenderer sessionPanel;
+    private readonly Dictionary<Guid, SessionWindow> sessionWindows = [];
+    private readonly ConcurrentQueue<Guid> pendingSessionOpens = new();
+    private readonly ConcurrentQueue<Guid> pendingSessionCloses = new();
     private bool disposed;
 
     public Plugin(
@@ -27,15 +32,17 @@ public sealed class Plugin : IDalamudPlugin
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
         runtime = new CatsinoRuntime(pluginInterface, playerState, framework, pluginLog);
-        window = new CatsinoWindow(runtime);
+        sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId));
+        window = new CatsinoWindow(runtime, sessionPanel);
         windowSystem.AddWindow(window);
+        runtime.SessionRemoved += OnSessionRemoved;
 
         commandManager.AddHandler(Command, new CommandInfo((_, _) => window.Toggle())
         {
             HelpMessage = "Open the Catsino dealer client.",
             ShowInHelp = true,
         });
-        pluginInterface.UiBuilder.Draw += windowSystem.Draw;
+        pluginInterface.UiBuilder.Draw += Draw;
         pluginInterface.UiBuilder.OpenMainUi += OpenMainUi;
     }
 
@@ -47,12 +54,42 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         disposed = true;
-        pluginInterface.UiBuilder.Draw -= windowSystem.Draw;
+        pluginInterface.UiBuilder.Draw -= Draw;
         pluginInterface.UiBuilder.OpenMainUi -= OpenMainUi;
+        runtime.SessionRemoved -= OnSessionRemoved;
         commandManager.RemoveHandler(Command);
         windowSystem.RemoveAllWindows();
         runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private void OpenMainUi() => window.IsOpen = true;
+
+    private void Draw()
+    {
+        while (pendingSessionOpens.TryDequeue(out var sessionId))
+        {
+            if (!sessionWindows.TryGetValue(sessionId, out var sessionWindow))
+            {
+                sessionWindow = new SessionWindow(sessionId, sessionPanel, id => pendingSessionCloses.Enqueue(id));
+                sessionWindows.Add(sessionId, sessionWindow);
+                windowSystem.AddWindow(sessionWindow);
+            }
+
+            runtime.TrackSession(sessionId);
+            sessionWindow.IsOpen = true;
+        }
+
+        while (pendingSessionCloses.TryDequeue(out var sessionId))
+        {
+            if (sessionWindows.Remove(sessionId, out var sessionWindow))
+            {
+                sessionWindow.IsOpen = false;
+                windowSystem.RemoveWindow(sessionWindow);
+            }
+        }
+
+        windowSystem.Draw();
+    }
+
+    private void OnSessionRemoved(Guid sessionId) => pendingSessionCloses.Enqueue(sessionId);
 }

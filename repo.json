@@ -3,15 +3,15 @@
     "Author": "Catsino",
     "Name": "Catsino",
     "Punchline": "Public dealer client for Catsino sessions.",
-    "Description": "Untrusted dealer client for authorization, sessions, deposits, and backend-directed Dropbox payouts.",
+    "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed Dropbox payouts.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.0.1.0",
+    "AssemblyVersion": "1.1.0.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.1/Catsino.Plugin.zip",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.0.1/Catsino.Plugin.zip",
-    "Changelog": "Send invite /tell commands through the native FFXIV chat input on the framework thread.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.0/Catsino.Plugin.zip",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.0/Catsino.Plugin.zip",
+    "Changelog": "Add backend-authoritative dealer roster tables, signed balance adjustments, cash-out confirmation, pending invites, session removal, and multi-session windows while retaining native /tell delivery.",
     "Tags": ["dealer", "games"]
   }
 ]

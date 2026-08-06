@@ -54,6 +54,45 @@ public sealed record InviteDto(
     Uri InviteUrl,
     DateTimeOffset ExpiresAt);
 
+public sealed record SessionRosterPlayerDto(
+    Guid MembershipId,
+    Guid SessionId,
+    string CharacterName,
+    string HomeWorld,
+    long BalanceGil,
+    long NetGil,
+    long Tokens,
+    long ReservedTokens,
+    bool BettingLocked,
+    string PayoutState,
+    string ReconciliationState,
+    DateTimeOffset JoinedAt);
+
+public sealed record PendingInviteDto(
+    Guid InviteId,
+    Guid SessionId,
+    string CharacterName,
+    string HomeWorld,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt);
+
+public sealed record SessionRosterDto(
+    Guid SessionId,
+    IReadOnlyList<SessionRosterPlayerDto> Players,
+    IReadOnlyList<PendingInviteDto> PendingInvites,
+    DateTimeOffset ObservedAt);
+
+public sealed record AdjustPlayerBalanceRequest(long AmountGil);
+
+public sealed record DealerCashOutRequest(
+    bool ConfirmAllAvailable,
+    bool ConfirmNetZero,
+    long ExpectedGross,
+    long ExpectedFee,
+    long ExpectedNet);
+
+public sealed record SessionRemovalDto(Guid SessionId, string Mode);
+
 public sealed record CreateManualDepositRequest(Guid PlayerId, long AmountGil);
 
 public sealed record DepositDto(

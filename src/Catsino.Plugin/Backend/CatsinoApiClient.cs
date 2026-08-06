@@ -139,7 +139,7 @@ public sealed class CatsinoApiClient : IDisposable
         SendAuthorizedAsync<IReadOnlyList<GameSessionDto>>(HttpMethod.Get, "api/v1/game-sessions", cancellationToken: cancellationToken);
 
     public Task<GameSessionDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default) =>
-        SendAuthorizedNullableAsync<GameSessionDto>(HttpMethod.Get, "api/v1/game-sessions/active", cancellationToken);
+        SendAuthorizedNullableAsync<GameSessionDto>(HttpMethod.Get, "api/v1/game-sessions/active", cancellationToken: cancellationToken);
 
     public Task<GameSessionDto> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<GameSessionDto>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}", cancellationToken: cancellationToken);
@@ -161,6 +161,53 @@ public sealed class CatsinoApiClient : IDisposable
 
     public Task<InviteDto> CreateInviteAsync(Guid sessionId, CreateInviteRequest request, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<InviteDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/invites", request, cancellationToken: cancellationToken);
+
+    public Task<SessionRosterDto> GetSessionRosterAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<SessionRosterDto>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/roster", cancellationToken: cancellationToken);
+
+    public Task<IReadOnlyList<PendingInviteDto>> GetPendingInvitesAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<IReadOnlyList<PendingInviteDto>>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/invites", cancellationToken: cancellationToken);
+
+    public Task CancelInviteAsync(Guid sessionId, Guid inviteId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedNoContentAsync(HttpMethod.Delete, $"api/v1/game-sessions/{sessionId:D}/invites/{inviteId:D}", cancellationToken: cancellationToken);
+
+    public Task<SessionRosterPlayerDto> AdjustPlayerBalanceAsync(
+        Guid sessionId,
+        Guid membershipId,
+        AdjustPlayerBalanceRequest request,
+        Guid idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<SessionRosterPlayerDto>(
+            HttpMethod.Post,
+            $"api/v1/game-sessions/{sessionId:D}/players/{membershipId:D}/balance-adjustments",
+            request,
+            idempotencyKey,
+            cancellationToken);
+
+    public Task<CashOutPreviewResponse> GetPlayerCashOutPreviewAsync(
+        Guid sessionId,
+        Guid membershipId,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<CashOutPreviewResponse>(
+            HttpMethod.Get,
+            $"api/v1/game-sessions/{sessionId:D}/players/{membershipId:D}/cashout-preview",
+            cancellationToken: cancellationToken);
+
+    public Task<CashOutResponse?> StartPlayerCashOutAsync(
+        Guid sessionId,
+        Guid membershipId,
+        DealerCashOutRequest request,
+        Guid idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedNullableAsync<CashOutResponse>(
+            HttpMethod.Post,
+            $"api/v1/game-sessions/{sessionId:D}/players/{membershipId:D}/cashouts",
+            request,
+            idempotencyKey,
+            cancellationToken);
+
+    public Task<SessionRemovalDto> DeleteSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<SessionRemovalDto>(HttpMethod.Delete, $"api/v1/game-sessions/{sessionId:D}", cancellationToken: cancellationToken);
 
     public Task<DepositDto> CreateDepositAsync(
         Guid sessionId,
@@ -230,11 +277,13 @@ public sealed class CatsinoApiClient : IDisposable
     private async Task<T?> SendAuthorizedNullableAsync<T>(
         HttpMethod method,
         string path,
+        object? body = null,
+        Guid? idempotencyKey = null,
         CancellationToken cancellationToken = default)
         where T : class
     {
         using var response = await SendResponseAsync(
-            () => CreateJsonRequest(method, path, null),
+            () => CreateJsonRequest(method, path, body, idempotencyKey),
             authorized: true,
             allowRefresh: true,
             cancellationToken).ConfigureAwait(false);
@@ -267,7 +316,7 @@ public sealed class CatsinoApiClient : IDisposable
         using var response = await SendResponseAsync(requestFactory, authorized, allowRefresh, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NoContent)
         {
-            return default!;
+            throw new InvalidDataException("The Catsino API returned no content for a required response.");
         }
 
         return await response.Content.ReadFromJsonAsync<T>(ContractJson.Options, cancellationToken).ConfigureAwait(false)
@@ -429,5 +478,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.0.1";
+    public const string Current = "1.1.0";
 }

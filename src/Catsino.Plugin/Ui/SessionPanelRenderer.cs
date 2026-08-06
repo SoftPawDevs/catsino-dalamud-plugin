@@ -1,0 +1,524 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using Catsino.Plugin.Contracts;
+using Catsino.Plugin.Runtime;
+using Catsino.Plugin.Security;
+using Catsino.Plugin.Workflow;
+using Dalamud.Bindings.ImGui;
+
+namespace Catsino.Plugin.Ui;
+
+public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> openDetached)
+{
+    private readonly Dictionary<Guid, PanelState> states = [];
+    private readonly ConcurrentDictionary<SessionPlayerKey, byte> busyPlayers = new();
+    private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
+
+    public void Draw(Guid sessionId)
+    {
+        while (pendingUiUpdates.TryDequeue(out var update))
+        {
+            update();
+        }
+
+        var session = runtime.GetSession(sessionId);
+        if (session is null)
+        {
+            ImGui.TextDisabled("This session is no longer available.");
+            return;
+        }
+
+        runtime.TrackSession(sessionId);
+        var state = GetState(session);
+        var roster = runtime.GetRoster(sessionId);
+        if (roster is null && !state.RosterRequested)
+        {
+            state.RosterRequested = true;
+            RunSession(state, () => runtime.RefreshRosterAsync(sessionId));
+        }
+
+        ImGui.PushID(sessionId.ToString("D"));
+        if (ImGui.Button("Open in new window"))
+        {
+            openDetached(sessionId);
+        }
+
+        ImGui.SameLine();
+        BeginDisabled(state.Busy);
+        if (ImGui.Button("Refresh roster"))
+        {
+            RunSession(state, () => runtime.RefreshRosterAsync(sessionId));
+        }
+
+        EndDisabled(state.Busy);
+        ImGui.SameLine();
+        var canDelete = roster is not null && roster.Players.Count == 0;
+        BeginDisabled(state.Busy || !canDelete);
+        if (ImGui.Button("Delete session"))
+        {
+            RunSession(state, async () =>
+            {
+                await runtime.DeleteSessionAsync(sessionId).ConfigureAwait(false);
+            });
+        }
+
+        EndDisabled(state.Busy || !canDelete);
+        if (!canDelete)
+        {
+            ShowTooltip("A session can only be deleted when the backend roster has no active players.");
+        }
+
+        ImGui.TextUnformatted($"{session.GameType} | {session.State} | {roster?.Players.Count ?? session.PlayerCount} players");
+        ImGui.TextUnformatted($"Deposited: {session.TotalDepositedGil:N0} gil");
+        ImGui.TextUnformatted($"Payout: {session.PayoutState} | Reconciliation: {session.ReconciliationState}");
+        DrawSessionControls(session, state);
+
+        if (!string.IsNullOrWhiteSpace(state.ValidationMessage))
+        {
+            ImGui.TextWrapped(state.ValidationMessage);
+        }
+
+        if (roster is null)
+        {
+            ImGui.TextDisabled("Loading authoritative roster...");
+            ImGui.PopID();
+            return;
+        }
+
+        DrawRosterTable(session, roster, state);
+        DrawConfirmations(roster, state);
+        ImGui.PopID();
+    }
+
+    private void DrawSessionControls(GameSessionDto session, PanelState state)
+    {
+        var feeLocked = session.State != GameSessionState.Created;
+        BeginDisabled(feeLocked || state.Busy);
+        ImGui.SetNextItemWidth(100);
+        ImGui.InputText("Fee %", ref state.EditFee, 16, ImGuiInputTextFlags.CharsDecimal);
+        ImGui.SameLine();
+        if (ImGui.Button("Update fee"))
+        {
+            if (DealerInputValidator.TryParseFee(state.EditFee, out var fee))
+            {
+                RunSession(state, () => runtime.UpdateFeeAsync(session.SessionId, fee));
+            }
+            else
+            {
+                state.ValidationMessage = "Fee must be a decimal from 0 to 100.";
+            }
+        }
+
+        EndDisabled(feeLocked || state.Busy);
+        if (feeLocked)
+        {
+            ImGui.TextDisabled("Fee is locked after Created.");
+        }
+
+        BeginDisabled(state.Busy || session.State != GameSessionState.Created);
+        if (ImGui.Button("Open session"))
+        {
+            RunSession(state, () => runtime.OpenSessionAsync(session.SessionId));
+        }
+
+        EndDisabled(state.Busy || session.State != GameSessionState.Created);
+        ImGui.SameLine();
+        BeginDisabled(state.Busy || session.State != GameSessionState.Open);
+        if (ImGui.Button("Close session"))
+        {
+            RunSession(state, () => runtime.CloseSessionAsync(session.SessionId));
+        }
+
+        EndDisabled(state.Busy || session.State != GameSessionState.Open);
+    }
+
+    private void DrawRosterTable(GameSessionDto session, SessionRosterDto roster, PanelState state)
+    {
+        ImGui.Spacing();
+        const ImGuiTableFlags flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg |
+                                      ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp;
+        if (!ImGui.BeginTable("DealerSessionRoster", 5, flags))
+        {
+            return;
+        }
+
+        ImGui.TableSetupColumn("Player", ImGuiTableColumnFlags.WidthStretch, 2f);
+        ImGui.TableSetupColumn("Balance", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("NET", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("Tokens", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthStretch, 2.2f);
+        ImGui.TableHeadersRow();
+
+        foreach (var player in roster.Players)
+        {
+            DrawPlayerRow(player, state);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var invite in roster.PendingInvites.Where(invite => InviteCountdown.IsVisible(invite, now)))
+        {
+            DrawPendingInviteRow(invite, now, state);
+        }
+
+        DrawInvitationInputRow(session, state);
+        ImGui.EndTable();
+    }
+
+    private void DrawPlayerRow(SessionRosterPlayerDto player, PanelState state)
+    {
+        var key = new SessionPlayerKey(player.SessionId, player.MembershipId);
+        var adjustment = runtime.GetBalanceAdjustment(key);
+        var cashOut = runtime.GetCashOut(key);
+        var rowBusy = busyPlayers.ContainsKey(key) ||
+                      adjustment?.State == DealerActionState.Sending ||
+                      cashOut?.State == DealerActionState.Sending;
+        var payoutLocked = player.ReservedTokens > 0 || HasOpenPayout(player.PayoutState);
+
+        ImGui.PushID(player.MembershipId.ToString("D"));
+        ImGui.TableNextRow();
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted($"{player.CharacterName}@{player.HomeWorld}");
+        ImGui.TextDisabled($"Payout: {player.PayoutState} | Reconciliation: {player.ReconciliationState}");
+        ShowTooltip($"Reserved tokens: {player.ReservedTokens:N0}\nBetting locked: {player.BettingLocked}\nJoined: {player.JoinedAt:u}");
+
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted($"{player.BalanceGil:N0} gil");
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted($"{player.NetGil:N0} gil");
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted($"{player.Tokens:N0}");
+        if (player.ReservedTokens > 0)
+        {
+            ImGui.TextDisabled($"{player.ReservedTokens:N0} reserved");
+        }
+
+        ImGui.TableNextColumn();
+        var draft = runtime.ActionDrafts.GetBalanceAdjustment(key);
+        ImGui.SetNextItemWidth(100);
+        if (ImGui.InputText("##signedAdjustment", ref draft, 20, ImGuiInputTextFlags.CharsDecimal))
+        {
+            runtime.ActionDrafts.SetBalanceAdjustment(key, draft);
+        }
+
+        ImGui.SameLine();
+        BeginDisabled(rowBusy || payoutLocked || player.BettingLocked || adjustment is not null);
+        if (ImGui.Button("+##apply"))
+        {
+            if (DealerInputValidator.TryParseBalanceAdjustment(draft, out var amount))
+            {
+                TryUiAction(state, () => runtime.PrepareBalanceAdjustment(key, amount));
+            }
+            else
+            {
+                state.ValidationMessage = "Enter a signed, non-zero whole gil adjustment. Positive deposits; negative debits available Tokens.";
+            }
+        }
+
+        EndDisabled(rowBusy || payoutLocked || player.BettingLocked || adjustment is not null);
+        ImGui.SameLine();
+        BeginDisabled(rowBusy || payoutLocked || cashOut is not null);
+        if (ImGui.Button("Cash out"))
+        {
+            RunPlayer(state, key, () => runtime.RequestCashOutPreviewAsync(key));
+        }
+
+        EndDisabled(rowBusy || payoutLocked || cashOut is not null);
+        if (payoutLocked)
+        {
+            ImGui.TextDisabled("Payout/reservation open");
+        }
+
+        ImGui.PopID();
+    }
+
+    private void DrawPendingInviteRow(PendingInviteDto invite, DateTimeOffset now, PanelState state)
+    {
+        ImGui.PushID(invite.InviteId.ToString("D"));
+        ImGui.TableNextRow();
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted($"{invite.CharacterName}@{invite.HomeWorld}");
+        ImGui.TextDisabled("Pending invite");
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled("Pending");
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled("-");
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted($"Expires in {InviteCountdown.Format(invite.ExpiresAt, now)}");
+        ImGui.TableNextColumn();
+        BeginDisabled(state.Busy);
+        if (ImGui.Button("Cancel invite"))
+        {
+            RunSession(state, () => runtime.CancelInviteAsync(invite.SessionId, invite.InviteId));
+        }
+
+        EndDisabled(state.Busy);
+        ImGui.PopID();
+    }
+
+    private void DrawInvitationInputRow(GameSessionDto session, PanelState state)
+    {
+        ImGui.TableNextRow();
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled("Character Name");
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputText("##inviteCharacterName", ref state.InviteName, 32);
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled("Home World");
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputText("##inviteHomeWorld", ref state.InviteWorld, 32);
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled("-");
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled("Invite");
+        ImGui.TableNextColumn();
+        BeginDisabled(state.Busy || session.State == GameSessionState.Closed);
+        if (ImGui.Button("+##invite"))
+        {
+            var name = state.InviteName.Trim();
+            var world = state.InviteWorld.Trim();
+            var error = DealerInputValidator.ValidateCharacter(name, world);
+            if (error is not null)
+            {
+                state.ValidationMessage = error;
+            }
+            else
+            {
+                RunSession(
+                    state,
+                    () => runtime.CreateInviteAndTellAsync(session.SessionId, name, world),
+                    () =>
+                    {
+                        state.InviteName = string.Empty;
+                        state.InviteWorld = string.Empty;
+                    });
+            }
+        }
+
+        EndDisabled(state.Busy || session.State == GameSessionState.Closed);
+        ShowTooltip("Create the exact invite and send it through the native FFXIV /tell path.");
+    }
+
+    private void DrawConfirmations(SessionRosterDto roster, PanelState state)
+    {
+        foreach (var player in roster.Players)
+        {
+            var key = new SessionPlayerKey(player.SessionId, player.MembershipId);
+            if (runtime.GetBalanceAdjustment(key) is { } adjustment)
+            {
+                ImGui.PushID($"adjust-{player.MembershipId:D}");
+                ImGui.Separator();
+                ImGui.TextWrapped(
+                    $"Confirm {FormatSigned(adjustment.AmountGil)} gil for {player.CharacterName}@{player.HomeWorld}. " +
+                    $"Idempotency key: {adjustment.IdempotencyKey:D}");
+                if (!string.IsNullOrWhiteSpace(adjustment.ErrorMessage))
+                {
+                    ImGui.TextWrapped(adjustment.ErrorMessage);
+                }
+
+                if (adjustment.State == DealerActionState.Failed && !adjustment.CanDiscardFailure)
+                {
+                    ImGui.TextDisabled("The outcome is ambiguous. Retry with the retained idempotency key before dismissing.");
+                }
+
+                var busy = adjustment.State == DealerActionState.Sending || busyPlayers.ContainsKey(key);
+                BeginDisabled(busy);
+                if (ImGui.Button(adjustment.State == DealerActionState.Failed ? "Retry adjustment" : "Confirm adjustment"))
+                {
+                    RunPlayer(state, key, () => runtime.SubmitBalanceAdjustmentAsync(key));
+                }
+
+                EndDisabled(busy);
+
+                ImGui.SameLine();
+                BeginDisabled(busy || adjustment.State == DealerActionState.Failed && !adjustment.CanDiscardFailure);
+                if (ImGui.Button("Cancel"))
+                {
+                    TryUiAction(state, () => runtime.CancelBalanceAdjustment(key));
+                }
+
+                EndDisabled(busy || adjustment.State == DealerActionState.Failed && !adjustment.CanDiscardFailure);
+                ImGui.PopID();
+            }
+
+            if (runtime.GetCashOut(key) is { } cashOut)
+            {
+                DrawCashOutConfirmation(player, key, cashOut, state);
+            }
+        }
+    }
+
+    private void DrawCashOutConfirmation(
+        SessionRosterPlayerDto player,
+        SessionPlayerKey key,
+        CashOutSubmission cashOut,
+        PanelState state)
+    {
+        ImGui.PushID($"cashout-{player.MembershipId:D}");
+        ImGui.Separator();
+        ImGui.TextUnformatted($"Cash out all available Tokens for {player.CharacterName}@{player.HomeWorld}");
+        ImGui.TextUnformatted($"Gross: {cashOut.Preview.Gross:N0} gil");
+        ImGui.TextUnformatted($"Fee percent: {cashOut.Preview.FeePercent.ToString(CultureInfo.InvariantCulture)}%");
+        ImGui.TextUnformatted($"Fee: {cashOut.Preview.Fee:N0} gil");
+        ImGui.TextUnformatted($"Net: {cashOut.Preview.Net:N0} gil");
+        foreach (var leg in cashOut.Preview.Legs)
+        {
+            ImGui.TextDisabled($"Leg {leg.Number}: {leg.Gross:N0} gross, {leg.Fee:N0} fee, {leg.Net:N0} net");
+        }
+
+        if (!string.IsNullOrWhiteSpace(cashOut.ErrorMessage))
+        {
+            ImGui.TextWrapped(cashOut.ErrorMessage);
+        }
+
+        if (cashOut.State == DealerActionState.Failed && !cashOut.CanDiscardFailure)
+        {
+            ImGui.TextDisabled("The outcome is ambiguous. Retry with the retained idempotency key before dismissing.");
+        }
+
+        var confirmNetZero = runtime.ActionDrafts.GetNetZeroConfirmation(key);
+        if (cashOut.Preview.NetIsZero)
+        {
+            if (ImGui.Checkbox("I explicitly confirm the zero net payout", ref confirmNetZero))
+            {
+                runtime.ActionDrafts.SetNetZeroConfirmation(key, confirmNetZero);
+            }
+        }
+
+        var busy = cashOut.State == DealerActionState.Sending || busyPlayers.ContainsKey(key);
+        BeginDisabled(busy || cashOut.Preview.NetIsZero && !confirmNetZero);
+        if (ImGui.Button(cashOut.State == DealerActionState.Failed ? "Retry cash out" : "Confirm cash out"))
+        {
+            RunPlayer(state, key, () => runtime.SubmitCashOutAsync(key, confirmNetZero));
+        }
+
+        EndDisabled(busy || cashOut.Preview.NetIsZero && !confirmNetZero);
+
+        ImGui.SameLine();
+        BeginDisabled(busy || cashOut.State == DealerActionState.Failed && !cashOut.CanDiscardFailure);
+        if (ImGui.Button("Cancel"))
+        {
+            TryUiAction(state, () => runtime.CancelCashOut(key));
+        }
+
+        EndDisabled(busy || cashOut.State == DealerActionState.Failed && !cashOut.CanDiscardFailure);
+        ImGui.PopID();
+    }
+
+    private PanelState GetState(GameSessionDto session)
+    {
+        if (!states.TryGetValue(session.SessionId, out var state))
+        {
+            state = new PanelState
+            {
+                EditFee = session.FeePercent.ToString(CultureInfo.InvariantCulture),
+            };
+            states.Add(session.SessionId, state);
+        }
+
+        return state;
+    }
+
+    private void RunSession(PanelState state, Func<Task> action, Action? onSuccess = null) =>
+        _ = RunSessionCoreAsync(state, action, onSuccess);
+
+    private async Task RunSessionCoreAsync(PanelState state, Func<Task> action, Action? onSuccess)
+    {
+        if (state.Busy)
+        {
+            return;
+        }
+
+        state.Busy = true;
+        state.ValidationMessage = string.Empty;
+        try
+        {
+            await action().ConfigureAwait(false);
+            pendingUiUpdates.Enqueue(() =>
+            {
+                onSuccess?.Invoke();
+                state.Busy = false;
+            });
+        }
+        catch (Exception exception)
+        {
+            var message = SecretRedactor.Redact(exception.Message);
+            pendingUiUpdates.Enqueue(() =>
+            {
+                state.ValidationMessage = message;
+                state.Busy = false;
+            });
+        }
+    }
+
+    private void RunPlayer(PanelState state, SessionPlayerKey player, Func<Task> action) =>
+        _ = RunPlayerCoreAsync(state, player, action);
+
+    private async Task RunPlayerCoreAsync(PanelState state, SessionPlayerKey player, Func<Task> action)
+    {
+        if (!busyPlayers.TryAdd(player, 0))
+        {
+            return;
+        }
+
+        state.ValidationMessage = string.Empty;
+        try
+        {
+            await action().ConfigureAwait(false);
+            pendingUiUpdates.Enqueue(() => busyPlayers.TryRemove(player, out _));
+        }
+        catch (Exception exception)
+        {
+            var message = SecretRedactor.Redact(exception.Message);
+            pendingUiUpdates.Enqueue(() =>
+            {
+                state.ValidationMessage = message;
+                busyPlayers.TryRemove(player, out _);
+            });
+        }
+    }
+
+    private static void TryUiAction(PanelState state, Action action)
+    {
+        state.ValidationMessage = string.Empty;
+        try
+        {
+            action();
+        }
+        catch (Exception exception)
+        {
+            state.ValidationMessage = SecretRedactor.Redact(exception.Message);
+        }
+    }
+
+    private static bool HasOpenPayout(string state) => state.ToLowerInvariant() is
+        "queued" or "waitingforplayer" or "tradeopened" or "tradelocked" or
+        "reconciliationrequired" or "processing" or "inprogress" or "pending";
+
+    private static string FormatSigned(long amount) => amount.ToString("+#,0;-#,0;0", CultureInfo.InvariantCulture);
+
+    private static void ShowTooltip(string text)
+    {
+        if (!ImGui.IsItemHovered())
+        {
+            return;
+        }
+
+        ImGui.BeginTooltip();
+        ImGui.TextUnformatted(text);
+        ImGui.EndTooltip();
+    }
+
+    private static void BeginDisabled(bool disabled) => ImGui.BeginDisabled(disabled);
+
+    private static void EndDisabled(bool _) => ImGui.EndDisabled();
+
+    private sealed class PanelState
+    {
+        internal string EditFee = string.Empty;
+        internal string InviteName = string.Empty;
+        internal string InviteWorld = string.Empty;
+        internal string ValidationMessage = string.Empty;
+        internal bool Busy;
+        internal bool RosterRequested;
+    }
+}

@@ -6,6 +6,8 @@ namespace Catsino.Plugin.Backend;
 public sealed class PluginHubClient : IAsyncDisposable
 {
     private readonly HubConnection connection;
+    private volatile bool stopRequested;
+    private volatile bool disposed;
 
     public PluginHubClient(Uri apiBaseUri, CatsinoApiClient api)
     {
@@ -25,11 +27,17 @@ public sealed class PluginHubClient : IAsyncDisposable
         connection.Reconnected += _ =>
         {
             ConnectionChanged?.Invoke(true);
+            Reconnected?.Invoke();
             return Task.CompletedTask;
         };
         connection.Closed += _ =>
         {
             ConnectionChanged?.Invoke(false);
+            if (!stopRequested && !disposed)
+            {
+                TerminallyDisconnected?.Invoke();
+            }
+
             return Task.CompletedTask;
         };
 
@@ -50,6 +58,8 @@ public sealed class PluginHubClient : IAsyncDisposable
     public event Action<string>? DealerAuthorizationRevoked;
     public event Action<string>? ReconnectRequired;
     public event Action<bool>? ConnectionChanged;
+    public event Action? Reconnected;
+    public event Action? TerminallyDisconnected;
 
     public bool IsConnected => connection.State == HubConnectionState.Connected;
 
@@ -57,6 +67,7 @@ public sealed class PluginHubClient : IAsyncDisposable
     {
         if (connection.State == HubConnectionState.Disconnected)
         {
+            stopRequested = false;
             await connection.StartAsync(cancellationToken).ConfigureAwait(false);
             ConnectionChanged?.Invoke(true);
         }
@@ -64,6 +75,7 @@ public sealed class PluginHubClient : IAsyncDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
+        stopRequested = true;
         if (connection.State != HubConnectionState.Disconnected)
         {
             await connection.StopAsync(cancellationToken).ConfigureAwait(false);
@@ -84,6 +96,8 @@ public sealed class PluginHubClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        disposed = true;
+        stopRequested = true;
         await connection.DisposeAsync().ConfigureAwait(false);
     }
 
