@@ -216,6 +216,33 @@ public sealed class CatsinoWindow : Window
         if (operation.State == PayoutOperationState.Failed)
         {
             ImGui.TextDisabled("The unpaid remainder is back in the player's available balance. Start a new cash out to retry the remaining gil.");
+            return;
+        }
+
+        // A payout that never reaches the trade (e.g. the target never became targetable) leaves
+        // the player's gil Reserved and blocks new cash outs. Only the active, not-yet-open
+        // operation can be aborted here; aborting returns the reserved gil to the player.
+        if (operation.OperationId == runtime.ActivePayout?.OperationId &&
+            operation.State is PayoutOperationState.Queued or PayoutOperationState.WaitingForPlayer)
+        {
+            var ctrlHeld = ImGui.GetIO().KeyCtrl;
+            if (!ctrlHeld)
+            {
+                ImGui.BeginDisabled();
+            }
+
+            if (ImGui.Button("Abort payout"))
+            {
+                runtime.RequestAbortActivePayout();
+            }
+
+            if (!ctrlHeld)
+            {
+                ImGui.EndDisabled();
+            }
+
+            ImGui.SameLine();
+            ImGui.TextDisabled("Hold Ctrl to enable. Returns the reserved gil to the player and re-enables new cash outs.");
         }
     }
 

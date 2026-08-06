@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed Dropbox payouts.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.1.4.0",
+    "AssemblyVersion": "1.1.5.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.4/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.4/Catsino.Plugin.zip?download=1",
-    "Changelog": "Hide payout leg rows from the cash-out confirmation UI while keeping the existing dealer-side payout automation.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.5/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.5/Catsino.Plugin.zip?download=1",
+    "Changelog": "Add an Abort payout button (Payouts tab) to cancel a stuck payout and return the player's reserved gil so a new cash out can be started. Hold Ctrl to enable it.",
     "Tags": ["dealer", "games"]
   }
 ]

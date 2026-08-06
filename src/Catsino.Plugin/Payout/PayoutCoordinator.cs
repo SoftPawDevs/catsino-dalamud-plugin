@@ -122,6 +122,35 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         }
     }
 
+    public async Task<bool> AbortActiveOperationAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (active is null)
+            {
+                return false;
+            }
+
+            // A dealer-initiated abort is only safe before an actual in-game trade window is open.
+            // CancelOutgoingTrade publishes a terminal TradeCancelled event for a not-yet-open op
+            // (which the backend turns into a Reserved release); once a trade is genuinely open it
+            // returns false and the operation must resolve through structured trade state instead.
+            if (!dropbox.CancelOutgoingTrade(active.Leg.OperationId))
+            {
+                throw new InvalidOperationException(
+                    "The payout trade is already open in-game and must be resolved through the trade window, not aborted.");
+            }
+
+            return true;
+        }
+        finally
+        {
+            eventGate.Release();
+        }
+    }
+
     public async Task<bool> RecoverBackendOperationAsync(PayoutOperationDto backendOperation, CancellationToken cancellationToken = default)
     {
         await eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);

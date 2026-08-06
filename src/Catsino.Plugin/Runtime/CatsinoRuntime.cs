@@ -1067,6 +1067,30 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         }
     }
 
+    public void RequestAbortActivePayout()
+    {
+        RunBackground(async token =>
+        {
+            if (payoutCoordinator.ActiveOperation is null)
+            {
+                SetStatus("There is no active payout to abort.");
+                return;
+            }
+
+            try
+            {
+                var aborted = await payoutCoordinator.AbortActiveOperationAsync(token).ConfigureAwait(false);
+                SetStatus(aborted
+                    ? "Aborted the payout. The player's reserved gil is being returned by the backend."
+                    : "There was no active payout to abort.");
+            }
+            catch (Exception exception)
+            {
+                SetStatus($"The payout could not be aborted: {SecretRedactor.Redact(exception.Message)}");
+            }
+        });
+    }
+
     private void RunBackground(Func<CancellationToken, Task> action) => _ = RunBackgroundCoreAsync(action);
 
     private async Task RunBackgroundCoreAsync(Func<CancellationToken, Task> action)
