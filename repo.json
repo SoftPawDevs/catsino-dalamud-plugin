@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.3.0.0",
+    "AssemblyVersion": "1.3.1.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.0/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.0/Catsino.Plugin.zip?download=1",
-    "Changelog": "Expand the built-in payout executor, session controls, and contract surface for the latest Catsino backend flow.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.1/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.1/Catsino.Plugin.zip?download=1",
+    "Changelog": "Improve built-in payout trade close detection, diagnostics, and session-side controls.",
     "Tags": ["dealer", "games"]
   }
 ]

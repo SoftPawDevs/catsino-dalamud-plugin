@@ -140,6 +140,36 @@ public sealed class TradeCompletionDetector(long expectedAmount)
     }
 }
 
+public enum TradeCloseDecision
+{
+    Cancelled,
+    Completed,
+    ReconciliationRequired,
+}
+
+// Decides the terminal outcome when the trade window closed but the executor never drove the
+// trade to a structured, detector-observed state (e.g. the window was accepted and closed
+// before the Trade addon became ready). It is deliberately conservative: it only reports a
+// clean Cancelled when no gil moved and nothing was confirmed, and only Completed on an exact
+// confirmed debit — anything else is ambiguous and must be reconciled.
+public static class TradeCloseEvaluator
+{
+    public static TradeCloseDecision Evaluate(bool gilRead, long gilBefore, long gilCurrent, long expectedAmount, bool confirmationAccepted)
+    {
+        if (gilRead && confirmationAccepted && gilBefore >= expectedAmount && gilCurrent == gilBefore - expectedAmount)
+        {
+            return TradeCloseDecision.Completed;
+        }
+
+        if (gilRead && !confirmationAccepted && gilCurrent == gilBefore)
+        {
+            return TradeCloseDecision.Cancelled;
+        }
+
+        return TradeCloseDecision.ReconciliationRequired;
+    }
+}
+
 internal static unsafe class PayoutTradeUiAccessor
 {
     internal static bool IsAddonReady(AtkUnitBase* addon) =>

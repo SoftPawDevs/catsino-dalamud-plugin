@@ -39,6 +39,8 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     private DateTimeOffset? lastWaitDiagnosticAt;
     private bool exactPartnerVerified;
     private bool tradeOpened;
+    private bool tradeConditionSeenOpen;
+    private DateTimeOffset? lastLockDiagnosticAt;
     private bool tradeRequested;
     private bool gilInputOpened;
     private bool amountSubmitted;
@@ -157,8 +159,28 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             {
                 if (!tradeOpened)
                 {
-                    tradeConditionOpenSince = null;
-                    WaitForExactPlayer(currentOperation);
+                    if (!tradeConditionSeenOpen)
+                    {
+                        // The player has not accepted a trade yet: keep waiting for them.
+                        tradeConditionOpenSince = null;
+                        WaitForExactPlayer(currentOperation);
+                        return;
+                    }
+
+                    // The trade window was accepted and then closed before the executor could
+                    // drive it (e.g. the Trade addon never became ready). Never loop back to
+                    // re-requesting the trade; settle briefly to read the final gil, then emit a
+                    // terminal event so the backend can release the tokens.
+                    tradeClosedAt ??= DateTimeOffset.UtcNow;
+                    if (DateTimeOffset.UtcNow - tradeClosedAt.Value < SettleWindow &&
+                        (!TryReadCurrentGil(out var undrivenGil) || undrivenGil != gilBefore - currentOperation.AmountGil))
+                    {
+                        return;
+                    }
+
+                    ResolveClosedTrade(currentOperation);
+                    operation = null;
+                    detector = null;
                     return;
                 }
 
@@ -176,6 +198,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             }
 
             tradeConditionOpenSince ??= DateTimeOffset.UtcNow;
+            tradeConditionSeenOpen = true;
             if (!TryGetAddonByName("Trade", out var tradeAddon) || !PayoutTradeUiAccessor.IsAddonReady(tradeAddon))
             {
                 if (tradeConditionOpenSince is not null && DateTimeOffset.UtcNow - tradeConditionOpenSince.Value > TradeReadyTimeout)
@@ -251,6 +274,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
 
             TryConfirmTrade(tradeAddon, state);
             detector.Observe(state);
+            LogLockDiagnostics(currentOperation, state, tradeAddon);
         }
         catch (Exception exception)
         {
@@ -420,6 +444,33 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         }
     }
 
+    private void ResolveClosedTrade(PayoutTradeOperation current)
+    {
+        var gilRead = TryReadCurrentGil(out var gil);
+        switch (TradeCloseEvaluator.Evaluate(gilRead, gilBefore, gil, current.AmountGil, confirmationAccepted))
+        {
+            case TradeCloseDecision.Completed:
+                PublishTerminal(PayoutTradeEventType.TradeCompleted, PayoutTradeState.Completed, null, null, false);
+                break;
+            case TradeCloseDecision.Cancelled:
+                PublishTerminal(
+                    PayoutTradeEventType.TradeCancelled,
+                    PayoutTradeState.Cancelled,
+                    "tradeWindowClosed",
+                    "The trade window closed before the payout could be processed; no gil was transferred.",
+                    false);
+                break;
+            default:
+                PublishTerminal(
+                    PayoutTradeEventType.TradeFailed,
+                    PayoutTradeState.ReconciliationRequired,
+                    "reconciliationRequired",
+                    "The trade closed without complete structured proof of the exact gil transfer.",
+                    true);
+                break;
+        }
+    }
+
     private bool TrySubmitTradeAmount(int amountGil)
     {
         if (DateTimeOffset.UtcNow < nextActionAt || !TryGetAddonByName("InputNumeric", out var inputNumericAddon) || !PayoutTradeUiAccessor.IsAddonReady(inputNumericAddon))
@@ -538,6 +589,31 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         log.Debug(builder.ToString());
     }
 
+    private void LogLockDiagnostics(PayoutTradeOperation current, TradeStateSnapshot state, AtkUnitBase* tradeAddon)
+    {
+        var stalledAtLock = amountSubmitted && !tradeLocked;
+        var stalledAtConfirm = tradeLocked && !confirmationAccepted;
+        if (!stalledAtLock && !stalledAtConfirm)
+        {
+            lastLockDiagnosticAt = null;
+            return;
+        }
+
+        if (lastLockDiagnosticAt is not null && DateTimeOffset.UtcNow - lastLockDiagnosticAt.Value < TimeSpan.FromSeconds(5))
+        {
+            return;
+        }
+
+        lastLockDiagnosticAt = DateTimeOffset.UtcNow;
+        var lockStateRead = PayoutTradeUiAccessor.TryGetLockState(tradeAddon, out var tradeButton, out _);
+        var lockButtonEnabled = lockStateRead && tradeButton != null && tradeButton->IsEnabled;
+        log.Debug(
+            $"Catsino payout lock diagnostics for {current.CharacterName}@{current.HomeWorld}: " +
+            $"stage={(stalledAtLock ? "awaitingLock" : "awaitingConfirm")}, exactPartnerVerified={state.ExactPartnerVerified}, " +
+            $"exactAmountSubmitted={state.ExactAmountSubmitted}, localLocked={state.LocalTradeLocked}, partnerLocked={state.PartnerTradeLocked}, " +
+            $"confirmationAccepted={confirmationAccepted}, lockStateRead={lockStateRead}, lockButtonEnabled={lockButtonEnabled}.");
+    }
+
     private void LogStructuredDump(PayoutTradeOperation current)
     {
         var inventoryManager = InventoryManager.Instance();
@@ -645,6 +721,8 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         lastWaitDiagnosticAt = null;
         exactPartnerVerified = false;
         tradeOpened = false;
+        tradeConditionSeenOpen = false;
+        lastLockDiagnosticAt = null;
         tradeRequested = false;
         gilInputOpened = false;
         amountSubmitted = false;
