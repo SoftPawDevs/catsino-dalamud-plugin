@@ -1,4 +1,3 @@
-using Catsino.Dropbox.Contracts;
 using Catsino.Plugin.Contracts;
 using Catsino.Plugin.Payout;
 
@@ -13,32 +12,29 @@ internal static class TestData
         "Exact Player",
         "Ragnarok",
         1_000_000,
-        DropboxPayoutContract.IpcVersion,
-        DropboxPayoutContract.SupportedBuildVersion,
         DateTimeOffset.UtcNow);
 
-    internal static DropboxCompatibility CompatibleDropbox() => new(
+    internal static PayoutExecutorReadiness ReadyExecutor() => new(
         true,
-        new DropboxVersionInfo(DropboxPayoutContract.IpcVersion, DropboxPayoutContract.SupportedBuildVersion, CompatibleDropboxPluginInstance),
-        DropboxPayoutContract.RequiredCapabilities,
-        true,
-        null);
+        ExecutorInstanceId,
+        null,
+        "ready");
 
-    internal static DropboxTradeEvent DropboxEvent(PayoutLegDto leg, DropboxTradeEventType eventType, bool ambiguous) => new(
+    internal static PayoutTradeEvent TradeEvent(PayoutLegDto leg, PayoutTradeEventType eventType, bool ambiguous) => new(
         leg.OperationId,
         leg.SessionId,
         leg.CharacterName,
         leg.HomeWorld,
         leg.AmountGil,
         eventType,
-        CompatibleDropboxPluginInstance,
+        ExecutorInstanceId,
         1,
         DateTimeOffset.UtcNow,
         ambiguous ? "reconciliationRequired" : "definiteFailure",
         ambiguous ? "Outcome is ambiguous." : "Trade definitely failed.",
         ambiguous);
 
-    internal static readonly Guid CompatibleDropboxPluginInstance = Guid.NewGuid();
+    internal static readonly Guid ExecutorInstanceId = Guid.NewGuid();
 
     internal static PayoutEventDto PayoutEvent() => new(
         Guid.NewGuid(),

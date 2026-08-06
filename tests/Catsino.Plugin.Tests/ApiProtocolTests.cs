@@ -80,11 +80,10 @@ public sealed class ApiProtocolTests
         await api.AuthorizeAsync("eyJactivation.payload.signature");
         var pairingId = ProtocolHandler.PairingId;
         var character = new CharacterIdentityDto("Exact Dealer", "Ragnarok", "Ragnarok", true);
-        var dropbox = new DropboxCapabilitiesDto(false, null, null, [], false, null);
-        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.4", "1.1.0", dropbox));
+        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.4", "1.1.0"));
         await api.SendHeartbeatAsync(new PluginHeartbeatRequest(
-            pairingId, Guid.NewGuid(), character, "1.1.4", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
-        await api.ReportDropboxStatusAsync(new DropboxStatusDto(false, false, false, null, "unavailable", DateTimeOffset.UtcNow));
+            pairingId, Guid.NewGuid(), character, "1.1.4", "1.1.0", 0, DateTimeOffset.UtcNow));
+        await api.ReportPayoutExecutorStatusAsync(new PayoutExecutorStatusDto(Guid.NewGuid(), true, false, null, "ready", DateTimeOffset.UtcNow));
         await api.GetSessionsAsync();
         await api.GetActiveSessionAsync();
         await api.GetSessionAsync(ProtocolHandler.SessionId);
@@ -100,7 +99,7 @@ public sealed class ApiProtocolTests
         AssertRoute(handler, HttpMethod.Post, "/api/v1/dealers/authorize");
         AssertRoute(handler, HttpMethod.Post, "/api/v1/plugin/pairings");
         AssertRoute(handler, HttpMethod.Post, $"/api/v1/plugin/pairings/{pairingId:D}/heartbeat");
-        AssertRoute(handler, HttpMethod.Post, "/api/v1/dropbox/status");
+        AssertRoute(handler, HttpMethod.Post, "/api/v1/payout-executor/status");
         AssertRoute(handler, HttpMethod.Get, "/api/v1/game-sessions");
         AssertRoute(handler, HttpMethod.Get, "/api/v1/game-sessions/active");
         AssertRoute(handler, HttpMethod.Get, $"/api/v1/game-sessions/{ProtocolHandler.SessionId:D}");
@@ -156,7 +155,6 @@ public sealed class ApiProtocolTests
         new Uri("https://localhost/"),
         store,
         () => new CharacterIdentityDto("Exact Dealer", "Ragnarok", "Ragnarok", true),
-        () => new DropboxCapabilitiesDto(false, null, null, [], false, null),
         Guid.NewGuid(),
         handler);
 
@@ -301,7 +299,7 @@ public sealed class ApiProtocolTests
             var now = DateTimeOffset.UtcNow;
             return new SessionRosterDto(
                 SessionId,
-                [new SessionRosterPlayerDto(PlayerId, SessionId, "Exact Player", "Ragnarok", 100, 20, 120, 0, false, "none", "clear", now)],
+                [new SessionRosterPlayerDto(PlayerId, SessionId, "Exact Player", "Ragnarok", 120, false, "none", "clear", now)],
                 [new PendingInviteDto(InviteId, SessionId, "Other Player", "Phoenix", 500, now, now.AddMinutes(2))],
                 now);
         }

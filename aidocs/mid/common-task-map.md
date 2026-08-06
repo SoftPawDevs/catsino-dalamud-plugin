@@ -33,12 +33,12 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 - `src/Catsino.Plugin/Workflow/DealerSessionActions.cs`
 - `src/Catsino.Plugin/Workflow/DepositSubmission.cs`
 
-## Payout Execution And Dropbox IPC
+## Payout Execution
 
 - `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`
 - `src/Catsino.Plugin/Payout/PayoutExecutionPolicy.cs`
-- `src/Catsino.Plugin/Dropbox/DalamudDropboxPayoutClient.cs`
-- `src/Catsino.Dropbox.Contracts/DropboxPayoutContract.cs`
+- `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`
+- `src/Catsino.Plugin/Payout/PayoutTradeModels.cs`
 
 ## Durable Outbox And Replay
 
@@ -54,8 +54,6 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 ## Protocol Shape And Compatibility
 
 - `src/Catsino.Plugin.Contracts/`
-- `src/Catsino.Dropbox.Contracts/`
 - `docs/protocol/backend-v1.md`
-- `docs/protocol/dropbox-ipc-v1.md`
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`
 - `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`

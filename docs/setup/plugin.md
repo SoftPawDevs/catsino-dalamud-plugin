@@ -6,7 +6,8 @@
 - .NET SDK 10.0.302 or a compatible later 10.0 feature band
 - Dalamud API 15 development files
 - A compatible Catsino backend using contract v1.1.0
-- The supported Catsino Dropbox fork for payouts
+
+The plugin contains its own payout trade executor. No separate payout plugin is required on the dealer client.
 
 ## Backend URL
 

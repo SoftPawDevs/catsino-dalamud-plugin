@@ -1,4 +1,3 @@
-using Catsino.Dropbox.Contracts;
 using Catsino.Plugin.Payout;
 
 namespace Catsino.Plugin.Tests;
@@ -9,40 +8,34 @@ public sealed class PayoutExecutionPolicyTests
     public void AcceptsOnlyExactSupportedVersionCapabilitiesIdentityAndAmount()
     {
         var leg = TestData.Leg();
-        var compatible = TestData.CompatibleDropbox();
+        var executor = TestData.ReadyExecutor();
 
-        Assert.Null(PayoutExecutionPolicy.Validate(leg, true, compatible));
-        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { AmountGil = 0 }, true, compatible));
-        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { AmountGil = 1_000_001 }, true, compatible));
-        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { CharacterName = "Wrong" }, true, compatible));
-        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { RequiredDropboxIpcVersion = "1.0.1" }, true, compatible));
-        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { IssuedAt = leg.IssuedAt.ToOffset(TimeSpan.FromHours(1)) }, true, compatible));
-        Assert.NotNull(PayoutExecutionPolicy.Validate(leg, false, compatible));
+        Assert.Null(PayoutExecutionPolicy.Validate(leg, true, executor));
+        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { AmountGil = 0 }, true, executor));
+        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { AmountGil = 1_000_001 }, true, executor));
+        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { CharacterName = "Wrong" }, true, executor));
+        Assert.NotNull(PayoutExecutionPolicy.Validate(leg with { IssuedAt = leg.IssuedAt.ToOffset(TimeSpan.FromHours(1)) }, true, executor));
+        Assert.NotNull(PayoutExecutionPolicy.Validate(leg, false, executor));
+        Assert.NotNull(PayoutExecutionPolicy.Validate(leg, true, executor with { IsReady = false }));
     }
 
     [Fact]
-    public void RejectsMissingCapabilityAndOneActiveOperation()
+    public void RejectsOneActiveOperation()
     {
         var leg = TestData.Leg();
-        var compatible = TestData.CompatibleDropbox();
-        Assert.NotNull(PayoutExecutionPolicy.Validate(
-            leg,
-            true,
-            compatible with { Capabilities = compatible.Capabilities.Skip(1).ToArray() }));
-
-        var active = new DropboxTradeOperation(
+        var active = new PayoutTradeOperation(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "Other Player",
             "Ragnarok",
             1,
-            DropboxTradeState.TradeOpened,
+            PayoutTradeState.TradeOpened,
             Guid.NewGuid(),
             1,
             DateTimeOffset.UtcNow,
             null,
             null,
             false);
-        Assert.NotNull(PayoutExecutionPolicy.Validate(leg, true, compatible with { ActiveOperation = active }));
+        Assert.NotNull(PayoutExecutionPolicy.Validate(leg, true, TestData.ReadyExecutor() with { ActiveOperation = active }));
     }
 }

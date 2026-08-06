@@ -3,7 +3,7 @@
     "Author": "Catsino",
     "Name": "Catsino",
     "Punchline": "Public dealer client for Catsino sessions.",
-    "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed Dropbox payouts.",
+    "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
     "InternalName": "Catsino.Plugin",
     "AssemblyVersion": "1.1.5.0",
     "ApplicableVersion": "any",

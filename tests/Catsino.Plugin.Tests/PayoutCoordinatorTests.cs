@@ -1,6 +1,4 @@
-using Catsino.Dropbox.Contracts;
 using Catsino.Plugin.Contracts;
-using Catsino.Plugin.Dropbox;
 using Catsino.Plugin.Payout;
 
 namespace Catsino.Plugin.Tests;
@@ -12,57 +10,57 @@ public sealed class PayoutCoordinatorTests : IDisposable
     [Fact]
     public async Task AllowsOneOperationAndNeverAutomaticallyRetriesTerminalFailure()
     {
-        var fakeDropbox = new FakeDropbox();
+        var fakeExecutor = new FakeExecutor();
         var outbox = new PersistentPayoutOutbox(directory);
         var transport = new FakeTransport();
-        using var coordinator = new PayoutCoordinator(fakeDropbox, outbox, transport, () => true, _ => { });
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, transport, () => true, _ => { });
         var leg = TestData.Leg();
 
         await coordinator.StartBackendLegAsync(leg);
         await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.StartBackendLegAsync(TestData.Leg()));
-        Assert.Equal(1, fakeDropbox.QueueCount);
+        Assert.Equal(1, fakeExecutor.StartCount);
 
-        fakeDropbox.Emit(TestData.DropboxEvent(leg, DropboxTradeEventType.TradeFailed, ambiguous: false));
+        fakeExecutor.Emit(TestData.TradeEvent(leg, PayoutTradeEventType.TradeFailed, ambiguous: false));
         await WaitUntilAsync(() => coordinator.ActiveOperation?.State == PayoutOperationState.Failed);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.StartBackendLegAsync(leg));
-        Assert.Equal(1, fakeDropbox.QueueCount);
+        Assert.Equal(1, fakeExecutor.StartCount);
     }
 
     [Fact]
     public async Task AmbiguousOutcomeIsTreatedAsFailedAndWaitsForExactAck()
     {
-        var fakeDropbox = new FakeDropbox();
+        var fakeExecutor = new FakeExecutor();
         var outbox = new PersistentPayoutOutbox(directory);
         var transport = new FakeTransport { ReturnWrongAck = true };
-        using var coordinator = new PayoutCoordinator(fakeDropbox, outbox, transport, () => true, _ => { });
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, transport, () => true, _ => { });
         var leg = TestData.Leg();
         await coordinator.StartBackendLegAsync(leg);
 
-        fakeDropbox.Emit(TestData.DropboxEvent(leg, DropboxTradeEventType.TradeFailed, ambiguous: true));
+        fakeExecutor.Emit(TestData.TradeEvent(leg, PayoutTradeEventType.TradeFailed, ambiguous: true));
         await WaitUntilAsync(() => coordinator.ActiveOperation?.State == PayoutOperationState.Failed);
         Assert.Equal(1, await outbox.CountAsync());
 
         transport.ReturnWrongAck = false;
         await coordinator.ReplayOutboxAsync();
         Assert.Equal(0, await outbox.CountAsync());
-        Assert.Equal(1, fakeDropbox.QueueCount);
+        Assert.Equal(1, fakeExecutor.StartCount);
     }
 
     [Theory]
     [InlineData("Wrong Name", "Ragnarok", 900)]
     [InlineData("Exact Player", "Wrong World", 900)]
     [InlineData("Exact Player", "Ragnarok", 901)]
-    public async Task RejectsDropboxEventsThatDoNotMatchExactIdentityOrAmount(string characterName, string homeWorld, long amountGil)
+    public async Task RejectsExecutorEventsThatDoNotMatchExactIdentityOrAmount(string characterName, string homeWorld, long amountGil)
     {
-        var fakeDropbox = new FakeDropbox();
+        var fakeExecutor = new FakeExecutor();
         var outbox = new PersistentPayoutOutbox(directory);
-        using var coordinator = new PayoutCoordinator(fakeDropbox, outbox, new FakeTransport(), () => true, _ => { });
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
         var leg = TestData.Leg();
 
         await coordinator.StartBackendLegAsync(leg);
 
-        fakeDropbox.Emit(TestData.DropboxEvent(leg, DropboxTradeEventType.TradeCompleted, ambiguous: false) with
+        fakeExecutor.Emit(TestData.TradeEvent(leg, PayoutTradeEventType.TradeCompleted, ambiguous: false) with
         {
             CharacterName = characterName,
             HomeWorld = homeWorld,
@@ -94,29 +92,62 @@ public sealed class PayoutCoordinatorTests : IDisposable
         Assert.True(condition());
     }
 
-    private sealed class FakeDropbox : IDropboxPayoutClient
+    private sealed class FakeExecutor : IPayoutTradeExecutor
     {
-        public event Action<DropboxTradeEvent>? TradeEventReceived;
+        public event Action<PayoutTradeEvent>? TradeEventReceived;
 
-        public int QueueCount { get; private set; }
+        public int StartCount { get; private set; }
 
-        public DropboxCompatibility Probe() => TestData.CompatibleDropbox();
+        public PayoutTradeOperation? ActiveOperation { get; private set; }
 
-        public bool EnablePayoutMode(Guid sessionId) => true;
+        public PayoutExecutorReadiness Probe() => TestData.ReadyExecutor() with { ActiveOperation = ActiveOperation };
 
-        public bool DisablePayoutMode(Guid sessionId) => true;
-
-        public bool QueueOutgoingGilTrade(Guid operationId, string characterName, string homeWorld, long amountGil)
+        public bool StartOperation(PayoutLegDto leg)
         {
-            QueueCount++;
+            StartCount++;
+            ActiveOperation = new PayoutTradeOperation(
+                leg.OperationId,
+                leg.SessionId,
+                leg.CharacterName,
+                leg.HomeWorld,
+                leg.AmountGil,
+                PayoutTradeState.WaitingForPlayer,
+                TestData.ExecutorInstanceId,
+                0,
+                DateTimeOffset.UtcNow,
+                null,
+                null,
+                false);
             return true;
         }
 
-        public bool CancelOutgoingTrade(Guid operationId) => true;
+        public bool CancelOperation(Guid operationId) => true;
 
-        public DropboxTradeOperation? GetTradeOperation(Guid operationId) => null;
+        public PayoutTradeOperation? GetOperation(Guid operationId) => ActiveOperation?.OperationId == operationId ? ActiveOperation : null;
 
-        public void Emit(DropboxTradeEvent tradeEvent) => TradeEventReceived?.Invoke(tradeEvent);
+        public void Emit(PayoutTradeEvent tradeEvent)
+        {
+            ActiveOperation = ActiveOperation is null
+                ? null
+                : ActiveOperation with
+                {
+                    State = tradeEvent.EventType switch
+                    {
+                        PayoutTradeEventType.PlayerDetected => PayoutTradeState.PlayerDetected,
+                        PayoutTradeEventType.TradeOpened => PayoutTradeState.TradeOpened,
+                        PayoutTradeEventType.TradeLocked => PayoutTradeState.TradeLocked,
+                        PayoutTradeEventType.TradeCompleted => PayoutTradeState.Completed,
+                        PayoutTradeEventType.TradeCancelled => PayoutTradeState.Cancelled,
+                        _ => tradeEvent.IsAmbiguous ? PayoutTradeState.ReconciliationRequired : PayoutTradeState.Failed,
+                    },
+                    LastSequenceNumber = tradeEvent.SequenceNumber,
+                    UpdatedAt = tradeEvent.OccurredAt,
+                    ErrorCode = tradeEvent.ErrorCode,
+                    ErrorMessage = tradeEvent.ErrorMessage,
+                    IsAmbiguous = tradeEvent.IsAmbiguous,
+                };
+            TradeEventReceived?.Invoke(tradeEvent);
+        }
 
         public void Dispose()
         {

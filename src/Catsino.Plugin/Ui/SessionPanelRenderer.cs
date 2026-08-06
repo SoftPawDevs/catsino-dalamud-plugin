@@ -100,15 +100,13 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.Spacing();
         const ImGuiTableFlags flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg |
                                       ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp;
-        if (!ImGui.BeginTable("DealerSessionRoster", 6, flags))
+        if (!ImGui.BeginTable("DealerSessionRoster", 4, flags))
         {
             return;
         }
 
         ImGui.TableSetupColumn("Player", ImGuiTableColumnFlags.WidthStretch, 2f);
         ImGui.TableSetupColumn("Home World", ImGuiTableColumnFlags.WidthStretch, 1.2f);
-        ImGui.TableSetupColumn("Balance", ImGuiTableColumnFlags.WidthStretch, 1f);
-        ImGui.TableSetupColumn("NET", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Tokens", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthStretch, 2.2f);
         ImGui.TableHeadersRow();
@@ -136,27 +134,19 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         var rowBusy = busyPlayers.ContainsKey(key) ||
                       adjustment?.State == DealerActionState.Sending ||
                       cashOut?.State == DealerActionState.Sending;
-        var payoutLocked = player.ReservedTokens > 0 || HasOpenPayout(player.PayoutState);
+        var payoutLocked = HasOpenPayout(player.PayoutState);
 
         ImGui.PushID(player.MembershipId.ToString("D"));
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
         ImGui.TextUnformatted(player.CharacterName);
         ImGui.TextDisabled($"Payout: {player.PayoutState} | Reconciliation: {player.ReconciliationState}");
-        ShowTooltip($"Reserved tokens: {player.ReservedTokens:N0}\nBetting locked: {player.BettingLocked}\nJoined: {player.JoinedAt:u}");
+        ShowTooltip($"Betting locked: {player.BettingLocked}\nJoined: {player.JoinedAt:u}");
 
         ImGui.TableNextColumn();
         ImGui.TextUnformatted(player.HomeWorld);
         ImGui.TableNextColumn();
-        ImGui.TextUnformatted($"{player.BalanceGil:N0} gil");
-        ImGui.TableNextColumn();
-        ImGui.TextUnformatted($"{player.NetGil:N0} gil");
-        ImGui.TableNextColumn();
         ImGui.TextUnformatted($"{player.Tokens:N0}");
-        if (player.ReservedTokens > 0)
-        {
-            ImGui.TextDisabled($"{player.ReservedTokens:N0} reserved");
-        }
 
         ImGui.TableNextColumn();
         var draft = runtime.ActionDrafts.GetBalanceAdjustment(key);
@@ -191,7 +181,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         EndDisabled(rowBusy || payoutLocked || cashOut is not null);
         if (payoutLocked)
         {
-            ImGui.TextDisabled("Payout/reservation open");
+            ImGui.TextDisabled("Payout open");
         }
 
         ImGui.PopID();

@@ -12,7 +12,6 @@ public sealed class CatsinoApiClient : IDisposable
     private readonly HttpClient httpClient;
     private readonly IProtectedCredentialStore credentialStore;
     private readonly Func<CharacterIdentityDto> characterProvider;
-    private readonly Func<DropboxCapabilitiesDto> dropboxProvider;
     private readonly Guid deviceId;
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private DealerAuthorizationDto? authorization;
@@ -21,7 +20,6 @@ public sealed class CatsinoApiClient : IDisposable
         Uri baseUri,
         IProtectedCredentialStore credentialStore,
         Func<CharacterIdentityDto> characterProvider,
-        Func<DropboxCapabilitiesDto> dropboxProvider,
         Guid deviceId,
         HttpMessageHandler? handler = null)
     {
@@ -34,7 +32,6 @@ public sealed class CatsinoApiClient : IDisposable
 
         this.credentialStore = credentialStore;
         this.characterProvider = characterProvider;
-        this.dropboxProvider = dropboxProvider;
         this.deviceId = deviceId;
         httpClient = handler is null ? new HttpClient() : new HttpClient(handler, true);
         httpClient.BaseAddress = baseUri;
@@ -59,8 +56,7 @@ public sealed class CatsinoApiClient : IDisposable
             character,
             deviceId,
             PluginVersion.Current,
-            ContractVersion.Current,
-            dropboxProvider());
+            ContractVersion.Current);
 
         var result = await SendAsync<DealerAuthorizationDto>(
             () => CreateJsonRequest(HttpMethod.Post, "api/v1/dealers/authorize", request),
@@ -132,8 +128,8 @@ public sealed class CatsinoApiClient : IDisposable
     public Task SendHeartbeatAsync(PluginHeartbeatRequest request, CancellationToken cancellationToken = default) =>
         SendAuthorizedNoContentAsync(HttpMethod.Post, $"api/v1/plugin/pairings/{request.PairingId:D}/heartbeat", request, cancellationToken: cancellationToken);
 
-    public Task ReportDropboxStatusAsync(DropboxStatusDto request, CancellationToken cancellationToken = default) =>
-        SendAuthorizedNoContentAsync(HttpMethod.Post, "api/v1/dropbox/status", request, cancellationToken: cancellationToken);
+    public Task ReportPayoutExecutorStatusAsync(PayoutExecutorStatusDto request, CancellationToken cancellationToken = default) =>
+        SendAuthorizedNoContentAsync(HttpMethod.Post, "api/v1/payout-executor/status", request, cancellationToken: cancellationToken);
 
     public Task<IReadOnlyList<GameSessionDto>> GetSessionsAsync(CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<IReadOnlyList<GameSessionDto>>(HttpMethod.Get, "api/v1/game-sessions", cancellationToken: cancellationToken);
@@ -404,8 +400,7 @@ public sealed class CatsinoApiClient : IDisposable
             RequireLoggedInCharacter(),
             deviceId,
             PluginVersion.Current,
-            ContractVersion.Current,
-            dropboxProvider());
+            ContractVersion.Current);
         return SendAsync<DealerAuthorizationDto>(
             () => CreateJsonRequest(HttpMethod.Post, "api/v1/dealers/refresh", request),
             authorized: false,

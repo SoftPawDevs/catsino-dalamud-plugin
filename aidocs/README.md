@@ -14,7 +14,7 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 - It stores a per-plugin default dealer fee that pre-fills newly created sessions.
 - It sends invite requests with explicit Home World and starting balance, and blocks duplicate invites for active or already-pending players.
 - It contains no authoritative balance engine, no backend secrets, no database logic, and no trusted Plinko outcome logic.
-- Dropbox is used only for outgoing payout execution through a versioned IPC surface.
+- Outgoing payout execution is built directly into the dealer plugin.
 
 ## Read Order
 
@@ -28,15 +28,13 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 8. `src/Catsino.Plugin/Ui/CatsinoWindow.cs`
 9. `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`
 10. `docs/protocol/backend-v1.md`
-11. `docs/protocol/dropbox-ipc-v1.md`
 
 ## Repo Map
 
-- `src/Catsino.Plugin`: actual Dalamud plugin runtime, UI, backend client, payout logic, Dropbox adapter, security helpers.
+- `src/Catsino.Plugin`: actual Dalamud plugin runtime, UI, backend client, payout logic, built-in trade executor, security helpers.
 - `src/Catsino.Plugin.Contracts`: public backend wire contracts.
-- `src/Catsino.Dropbox.Contracts`: Dropbox IPC contracts and capabilities.
-- `docs/protocol`: backend and Dropbox protocol references.
-- `docs/setup`: plugin and Dropbox setup notes.
+- `docs/protocol`: backend protocol reference.
+- `docs/setup`: plugin setup notes.
 - `tests`: unit and integration coverage around protocol, payout, security, outbox, and trade completion detection.
 
 ## First Places To Look
@@ -47,7 +45,7 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 - SignalR hub client: `src/Catsino.Plugin/Backend/PluginHubClient.cs`
 - Payout execution and event transport: `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`
 - Durable payout replay: `src/Catsino.Plugin/Payout/PersistentPayoutOutbox.cs`
-- Dropbox integration: `src/Catsino.Plugin/Dropbox/DalamudDropboxPayoutClient.cs`
+- Built-in payout executor: `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`
 - Main UI: `src/Catsino.Plugin/Ui/CatsinoWindow.cs`
 - Session UI and dealer actions: `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`
 - Local validation and secret handling: `src/Catsino.Plugin/Security/`
@@ -57,7 +55,7 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 - Treat the plugin as untrusted from the backend point of view.
 - The plugin must not become an authoritative balance source.
 - Contract versions are explicit and exact.
-- Payout execution requires compatible Dropbox IPC and capabilities.
+- Payout execution requires a ready built-in trade executor and exact player identity.
 - One active payout operation at a time.
 - Durable outbox before backend acknowledgement.
 - Ambiguous payout outcomes must not be auto-completed.
@@ -68,7 +66,7 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 - `high/architecture.md`: high-level structure and trust boundaries.
 - `high/runtime-lifecycle.md`: startup, auth restore, polling, hub reconnection, shutdown.
 - `mid/common-task-map.md`: where to work for common feature areas.
-- `mid/integration-and-payout.md`: backend, hub, Dropbox, and outbox integration notes.
+- `mid/integration-and-payout.md`: backend, hub, trade executor, and outbox integration notes.
 - `low/file-map.md`: file-by-file navigation notes.
 - `low/test-map.md`: which tests protect which rules.
 
@@ -79,5 +77,5 @@ Before making changes, identify whether the work belongs to UI, runtime coordina
 - UI change: start in `src/Catsino.Plugin/Ui/`.
 - Runtime or state change: start in `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs`.
 - HTTP or hub change: start in `src/Catsino.Plugin/Backend/`.
-- Payout or Dropbox change: start in `src/Catsino.Plugin/Payout/` and `src/Catsino.Plugin/Dropbox/`.
-- Wire shape change: inspect `src/Catsino.Plugin.Contracts/` or `src/Catsino.Dropbox.Contracts/` plus protocol docs and tests.
+- Payout or trade-executor change: start in `src/Catsino.Plugin/Payout/`.
+- Wire shape change: inspect `src/Catsino.Plugin.Contracts/` plus protocol docs and tests.

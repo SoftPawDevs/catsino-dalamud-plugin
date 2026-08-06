@@ -6,15 +6,14 @@ This repo is the public dealer client for Catsino running inside FFXIV through D
 
 ## Project Responsibilities
 
-- `src/Catsino.Plugin`: runtime, UI, backend connectivity, local persistence, payout coordination, Dropbox bridge.
+- `src/Catsino.Plugin`: runtime, UI, backend connectivity, local persistence, payout coordination, and the built-in outgoing trade executor.
 - `src/Catsino.Plugin.Contracts`: public backend request and response DTOs.
-- `src/Catsino.Dropbox.Contracts`: payout-only IPC contract and capability definitions.
 
 ## Trust Boundary
 
 - The plugin is not trusted for balances, session ownership, payout truth, or Plinko authority.
 - The backend remains authoritative.
-- The plugin's job is to present state, send requests, execute approved payout legs, and report observed outcomes.
+- The plugin presents state, sends requests, executes approved payout legs, and reports observed outcomes.
 
 ## Main Runtime Surfaces
 
@@ -23,8 +22,8 @@ This repo is the public dealer client for Catsino running inside FFXIV through D
 - HTTP client: `src/Catsino.Plugin/Backend/CatsinoApiClient.cs`
 - SignalR client: `src/Catsino.Plugin/Backend/PluginHubClient.cs`
 - Payout engine: `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`
+- Built-in trade executor: `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`
 - Local durable outbox: `src/Catsino.Plugin/Payout/PersistentPayoutOutbox.cs`
-- Dropbox adapter: `src/Catsino.Plugin/Dropbox/DalamudDropboxPayoutClient.cs`
 
 ## Security And Secrets
 
@@ -35,5 +34,4 @@ This repo is the public dealer client for Catsino running inside FFXIV through D
 ## External References
 
 - Backend protocol: `docs/protocol/backend-v1.md`
-- Dropbox IPC protocol: `docs/protocol/dropbox-ipc-v1.md`
-- Setup docs: `docs/setup/plugin.md` and `docs/setup/dropbox.md`
+- Setup docs: `docs/setup/plugin.md`

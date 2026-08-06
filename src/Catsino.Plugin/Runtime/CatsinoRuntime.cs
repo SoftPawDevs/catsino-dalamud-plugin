@@ -1,12 +1,12 @@
 using System.Collections.Concurrent;
-using Catsino.Dropbox.Contracts;
 using Catsino.Plugin.Backend;
 using Catsino.Plugin.Configuration;
 using Catsino.Plugin.Contracts;
-using Catsino.Plugin.Dropbox;
 using Catsino.Plugin.Payout;
 using Catsino.Plugin.Security;
 using Catsino.Plugin.Workflow;
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 
@@ -19,7 +19,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private readonly IFramework framework;
     private readonly IPluginLog pluginLog;
     private readonly PluginConfiguration configuration;
-    private readonly IDropboxPayoutClient dropbox;
+    private readonly IPayoutTradeExecutor payoutExecutor;
     private readonly CatsinoApiClient api;
     private readonly PluginHubClient hub;
     private readonly IPayoutOutbox outbox;
@@ -46,6 +46,11 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         IDalamudPluginInterface pluginInterface,
         IPlayerState playerState,
         IFramework framework,
+        IObjectTable objectTable,
+        ITargetManager targetManager,
+        ICondition condition,
+        IGameGui gameGui,
+        IDataManager dataManager,
         IPluginLog pluginLog)
     {
         this.pluginInterface = pluginInterface;
@@ -65,16 +70,16 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
         pluginInterface.SavePluginConfig(configuration);
         character = ReadCharacter();
-        dropbox = new DalamudDropboxPayoutClient(pluginInterface);
+        payoutExecutor = new BuiltInPayoutTradeExecutor(framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
 
         var configDirectory = pluginInterface.GetPluginConfigDirectory();
         var credentialStore = new DpapiCredentialStore(Path.Combine(configDirectory, "credentials.dat"));
         outbox = new PersistentPayoutOutbox(Path.Combine(configDirectory, "outbox"));
         var apiBaseUri = new Uri(configuration.ApiBaseUrl, UriKind.Absolute);
-        api = new CatsinoApiClient(apiBaseUri, credentialStore, () => Character, GetDropboxCapabilities, configuration.DeviceId);
+        api = new CatsinoApiClient(apiBaseUri, credentialStore, () => Character, configuration.DeviceId);
         hub = new PluginHubClient(apiBaseUri, api);
         payoutCoordinator = new PayoutCoordinator(
-            dropbox,
+            payoutExecutor,
             outbox,
             new BackendPayoutEventTransport(api),
             () => hub.IsConnected,
@@ -116,7 +121,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     public SessionActionDraftStore ActionDrafts { get; } = new();
 
-    public DropboxCapabilitiesDto DropboxCapabilities => GetDropboxCapabilities();
+    public PayoutExecutorReadiness PayoutExecutorStatus => payoutExecutor.Probe();
 
     public decimal DefaultDealerFeePercent => configuration.DefaultDealerFeePercent;
 
@@ -614,7 +619,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         await payoutCoordinator.DisposeAsync().ConfigureAwait(false);
         await hub.DisposeAsync().ConfigureAwait(false);
         api.Dispose();
-        dropbox.Dispose();
+        payoutExecutor.Dispose();
         lifecycleGate.Dispose();
     }
 
@@ -721,8 +726,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             configuration.DeviceId,
             Character,
             PluginVersion.Current,
-            ContractVersion.Current,
-            GetDropboxCapabilities()), cancellationToken).ConfigureAwait(false);
+            ContractVersion.Current), cancellationToken).ConfigureAwait(false);
         if (api.PairingId != pairing.PairingId)
         {
             throw new InvalidDataException("The dealer authorization and plugin pairing identities do not match.");
@@ -780,51 +784,27 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             Character,
             PluginVersion.Current,
             ContractVersion.Current,
-            GetDropboxCapabilities(),
             PendingOutboxEvents,
             DateTimeOffset.UtcNow);
         await api.SendHeartbeatAsync(heartbeat, cancellationToken).ConfigureAwait(false);
         await hub.ReportOutboxStatusAsync(PendingOutboxEvents).ConfigureAwait(false);
 
-        var compatibility = dropbox.Probe();
-        var status = new DropboxStatusDto(
-            compatibility.IsAvailable,
-            PayoutExecutionPolicy.Validate(CreateCompatibilityProbeLeg(), true, compatibility) is null,
+        var readiness = payoutExecutor.Probe();
+        var status = new PayoutExecutorStatusDto(
+            readiness.ExecutorInstanceId,
+            readiness.IsReady,
             payoutCoordinator.HasActiveOperation,
             payoutCoordinator.ActiveOperation?.OperationId,
-            compatibility.IsAvailable ? "available" : "unavailable",
+            readiness.Status,
             DateTimeOffset.UtcNow);
-        await api.ReportDropboxStatusAsync(status, cancellationToken).ConfigureAwait(false);
-        await hub.ReportDropboxStatusAsync(status).ConfigureAwait(false);
+        await api.ReportPayoutExecutorStatusAsync(status, cancellationToken).ConfigureAwait(false);
+        await hub.ReportPayoutExecutorStatusAsync(status).ConfigureAwait(false);
         if (payoutCoordinator.ActiveOperation is { } operation)
         {
             await hub.ReportOutgoingTradeStatusAsync(operation).ConfigureAwait(false);
         }
 
         LastHeartbeatAt = DateTimeOffset.UtcNow;
-    }
-
-    private PayoutLegDto CreateCompatibilityProbeLeg() => new(
-        Guid.NewGuid(),
-        Guid.NewGuid(),
-        Guid.NewGuid(),
-        "Probe Character",
-        "ProbeWorld",
-        1,
-        DropboxPayoutContract.IpcVersion,
-        DropboxPayoutContract.SupportedBuildVersion,
-        DateTimeOffset.UtcNow);
-
-    private DropboxCapabilitiesDto GetDropboxCapabilities()
-    {
-        var compatibility = dropbox.Probe();
-        return new DropboxCapabilitiesDto(
-            compatibility.IsAvailable,
-            compatibility.Version?.IpcVersion,
-            compatibility.Version?.BuildVersion,
-            compatibility.Capabilities,
-            compatibility.SupportsLanguageIndependentTradeState,
-            compatibility.Version?.PluginInstanceId);
     }
 
     public Task RefreshRosterAsync(Guid sessionId, CancellationToken cancellationToken = default)

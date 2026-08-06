@@ -26,12 +26,17 @@ public sealed class Plugin : IDalamudPlugin
         IDalamudPluginInterface pluginInterface,
         IPlayerState playerState,
         IFramework framework,
+        IObjectTable objectTable,
+        ITargetManager targetManager,
+        ICondition condition,
+        IGameGui gameGui,
+        IDataManager dataManager,
         ICommandManager commandManager,
         IPluginLog pluginLog)
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
-        runtime = new CatsinoRuntime(pluginInterface, playerState, framework, pluginLog);
+        runtime = new CatsinoRuntime(pluginInterface, playerState, framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
         sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId));
         window = new CatsinoWindow(runtime, sessionPanel);
         windowSystem.AddWindow(window);

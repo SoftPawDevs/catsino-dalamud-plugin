@@ -1,19 +1,13 @@
-using Catsino.Dropbox.Contracts;
 using Catsino.Plugin.Contracts;
 using Catsino.Plugin.Security;
 
 namespace Catsino.Plugin.Payout;
 
-public sealed record DropboxCompatibility(
-    bool IsAvailable,
-    DropboxVersionInfo? Version,
-    IReadOnlyList<string> Capabilities,
-    bool SupportsLanguageIndependentTradeState,
-    DropboxTradeOperation? ActiveOperation);
-
 public static class PayoutExecutionPolicy
 {
-    public static string? Validate(PayoutLegDto leg, bool backendConnected, DropboxCompatibility dropbox)
+    public const long MaximumTradeGil = 1_000_000;
+
+    public static string? Validate(PayoutLegDto leg, bool backendConnected, PayoutExecutorReadiness executor)
     {
         if (!backendConnected)
         {
@@ -36,42 +30,20 @@ public static class PayoutExecutionPolicy
             return identityError;
         }
 
-        if (leg.AmountGil is < 1 or > DropboxPayoutContract.MaximumGil)
+        if (leg.AmountGil is < 1 or > MaximumTradeGil)
         {
-            return $"Payout gil must be between 1 and {DropboxPayoutContract.MaximumGil}.";
+            return $"Payout gil must be between 1 and {MaximumTradeGil}.";
         }
 
-        if (!dropbox.IsAvailable || dropbox.Version is null)
+        if (!executor.IsReady || executor.ExecutorInstanceId == Guid.Empty)
         {
-            return "Dropbox payout IPC is unavailable.";
+            return "The built-in payout executor is unavailable.";
         }
 
-        if (!string.Equals(leg.RequiredDropboxIpcVersion, DropboxPayoutContract.IpcVersion, StringComparison.Ordinal) ||
-            !string.Equals(dropbox.Version.IpcVersion, DropboxPayoutContract.IpcVersion, StringComparison.Ordinal))
+        if (executor.ActiveOperation is not null && executor.ActiveOperation.State is not
+            (PayoutTradeState.Completed or PayoutTradeState.Cancelled or PayoutTradeState.Failed or PayoutTradeState.ReconciliationRequired))
         {
-            return "The Dropbox IPC version is not exactly supported.";
-        }
-
-        if (!string.Equals(leg.RequiredDropboxBuildVersion, DropboxPayoutContract.SupportedBuildVersion, StringComparison.Ordinal) ||
-            !string.Equals(dropbox.Version.BuildVersion, DropboxPayoutContract.SupportedBuildVersion, StringComparison.Ordinal))
-        {
-            return "The Dropbox build is not exactly supported.";
-        }
-
-        if (!dropbox.SupportsLanguageIndependentTradeState)
-        {
-            return "Dropbox does not provide language-independent trade state.";
-        }
-
-        if (DropboxPayoutContract.RequiredCapabilities.Any(required => !dropbox.Capabilities.Contains(required, StringComparer.Ordinal)))
-        {
-            return "Dropbox is missing a required payout capability.";
-        }
-
-        if (dropbox.ActiveOperation is not null && dropbox.ActiveOperation.State is not
-            (DropboxTradeState.Completed or DropboxTradeState.Cancelled or DropboxTradeState.Failed or DropboxTradeState.ReconciliationRequired))
-        {
-            return "Dropbox already has an active payout operation.";
+            return "The payout executor already has an active payout operation.";
         }
 
         return null;

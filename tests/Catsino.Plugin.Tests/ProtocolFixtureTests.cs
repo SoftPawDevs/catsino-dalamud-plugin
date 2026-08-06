@@ -54,14 +54,14 @@ public sealed class ProtocolFixtureTests
         var root = document.RootElement;
 
         var now = DateTimeOffset.UtcNow;
-        AssertDefinitionMatches(root, "DropboxCapabilitiesDto", new DropboxCapabilitiesDto(
-            true, "1.0.0", "1.0.0.7-catsino.1", ["outgoingGilOnly"], true, Guid.NewGuid()));
+        AssertDefinitionMatches(root, "PayoutExecutorStatusDto", new PayoutExecutorStatusDto(
+            Guid.NewGuid(), true, false, Guid.NewGuid(), "ready", now));
         AssertDefinitionMatches(root, "GameSessionDto", new GameSessionDto(
             Guid.NewGuid(), "plinko", 0m, GameSessionState.Closing, 1, 100, "pending", "clear", now, now, now));
         AssertDefinitionMatches(root, "SessionPlayerDto", new SessionPlayerDto(
             Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", SessionPlayerState.Open, 100, 50, "pending", "clear", now));
         AssertDefinitionMatches(root, "SessionRosterPlayerDto", new SessionRosterPlayerDto(
-            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 100, 25, 125, 10, false, "none", "clear", now));
+            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 125, false, "none", "clear", now));
         AssertDefinitionMatches(root, "PendingInviteDto", new PendingInviteDto(
             Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 100, now, now.AddMinutes(2)));
         AssertDefinitionMatches(root, "SessionRosterDto", new SessionRosterDto(Guid.NewGuid(), [], [], now));
@@ -81,15 +81,15 @@ public sealed class ProtocolFixtureTests
             "Exact Player", "Ragnarok", 100, now, "error", "message", true));
 
         var definitions = root.GetProperty("dtoDefinitions");
-        Assert.Equal("guid|null", definitions.GetProperty("DropboxCapabilitiesDto").GetProperty("pluginInstanceId").GetString());
+        Assert.Equal("guid", definitions.GetProperty("PayoutExecutorStatusDto").GetProperty("executorInstanceId").GetString());
         Assert.Equal("string", definitions.GetProperty("GameSessionDto").GetProperty("gameType").GetString());
         Assert.Equal("int64|null", definitions.GetProperty("SessionPlayerDto").GetProperty("payoutGil").GetString());
         Assert.Equal("string", definitions.GetProperty("SessionPlayerDto").GetProperty("payoutState").GetString());
         Assert.Equal("string", definitions.GetProperty("SessionPlayerDto").GetProperty("reconciliationState").GetString());
         Assert.Equal("guid", definitions.GetProperty("DepositDto").GetProperty("idempotencyKey").GetString());
         Assert.Equal("utcDateTimeOffset", definitions.GetProperty("DepositDto").GetProperty("recordedAt").GetString());
-        Assert.Equal("int64", definitions.GetProperty("SessionRosterPlayerDto").GetProperty("netGil").GetString());
         Assert.Equal("int64", definitions.GetProperty("SessionRosterPlayerDto").GetProperty("tokens").GetString());
+        Assert.Equal("bool", definitions.GetProperty("SessionRosterPlayerDto").GetProperty("bettingLocked").GetString());
         Assert.Equal("int64", definitions.GetProperty("PendingInviteDto").GetProperty("initialBalanceGil").GetString());
         Assert.Equal("int64", definitions.GetProperty("AdjustPlayerBalanceRequest").GetProperty("amountGil").GetString());
 

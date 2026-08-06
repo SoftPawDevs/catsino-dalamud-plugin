@@ -1,7 +1,5 @@
-using Catsino.Dropbox.Contracts;
 using Catsino.Plugin.Backend;
 using Catsino.Plugin.Contracts;
-using Catsino.Plugin.Dropbox;
 
 namespace Catsino.Plugin.Payout;
 
@@ -18,7 +16,7 @@ public sealed class BackendPayoutEventTransport(CatsinoApiClient api) : IPayoutE
 
 public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
 {
-    private readonly IDropboxPayoutClient dropbox;
+    private readonly IPayoutTradeExecutor executor;
     private readonly IPayoutOutbox outbox;
     private readonly IPayoutEventTransport transport;
     private readonly Func<bool> backendConnected;
@@ -34,18 +32,18 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
     private bool disposed;
 
     public PayoutCoordinator(
-        IDropboxPayoutClient dropbox,
+        IPayoutTradeExecutor executor,
         IPayoutOutbox outbox,
         IPayoutEventTransport transport,
         Func<bool> backendConnected,
         Action<string> reportStatus)
     {
-        this.dropbox = dropbox;
+        this.executor = executor;
         this.outbox = outbox;
         this.transport = transport;
         this.backendConnected = backendConnected;
         this.reportStatus = reportStatus;
-        dropbox.TradeEventReceived += OnTradeEventReceived;
+        executor.TradeEventReceived += OnTradeEventReceived;
     }
 
     public PayoutOperationDto? ActiveOperation { get; private set; }
@@ -68,29 +66,21 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
                 throw new InvalidOperationException("A terminal payout operation is never automatically retried.");
             }
 
-            var compatibility = dropbox.Probe();
-            var error = PayoutExecutionPolicy.Validate(leg, backendConnected(), compatibility);
+            var readiness = executor.Probe();
+            var error = PayoutExecutionPolicy.Validate(leg, backendConnected(), readiness);
             if (error is not null)
             {
                 throw new InvalidOperationException(error);
             }
 
-            active = new ActivePayout(leg, compatibility.Version!.PluginInstanceId);
+            active = new ActivePayout(leg, readiness.ExecutorInstanceId);
             ActiveOperation = ToOperation(leg, PayoutOperationState.WaitingForPlayer, null, null);
 
-            if (!dropbox.EnablePayoutMode(leg.SessionId))
+            if (!executor.StartOperation(leg))
             {
                 active = null;
                 ActiveOperation = null;
-                throw new InvalidOperationException("Dropbox rejected payout mode.");
-            }
-
-            if (!dropbox.QueueOutgoingGilTrade(leg.OperationId, leg.CharacterName, leg.HomeWorld, leg.AmountGil))
-            {
-                dropbox.DisablePayoutMode(leg.SessionId);
-                active = null;
-                ActiveOperation = null;
-                throw new InvalidOperationException("Dropbox rejected the outgoing payout leg.");
+                throw new InvalidOperationException("The built-in payout executor rejected the outgoing payout leg.");
             }
 
             reportStatus($"Waiting for {leg.CharacterName}@{leg.HomeWorld}; waiting has no timeout.");
@@ -111,9 +101,9 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
                 return;
             }
 
-            if (!dropbox.CancelOutgoingTrade(cancellation.OperationId))
+            if (!executor.CancelOperation(cancellation.OperationId))
             {
-                throw new InvalidOperationException("Dropbox could not definitively cancel the payout operation.");
+                throw new InvalidOperationException("The built-in payout executor could not definitively cancel the payout operation.");
             }
         }
         finally
@@ -133,11 +123,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
                 return false;
             }
 
-            // A dealer-initiated abort is only safe before an actual in-game trade window is open.
-            // CancelOutgoingTrade publishes a terminal TradeCancelled event for a not-yet-open op
-            // (which the backend turns into a Reserved release); once a trade is genuinely open it
-            // returns false and the operation must resolve through structured trade state instead.
-            if (!dropbox.CancelOutgoingTrade(active.Leg.OperationId))
+            if (!executor.CancelOperation(active.Leg.OperationId))
             {
                 throw new InvalidOperationException(
                     "The payout trade is already open in-game and must be resolved through the trade window, not aborted.");
@@ -162,14 +148,14 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
                 return false;
             }
 
-            var dropboxOperation = dropbox.GetTradeOperation(backendOperation.OperationId);
-            var compatibility = dropbox.Probe();
-            if (dropboxOperation is null || compatibility.Version is null ||
-                dropboxOperation.OperationId != backendOperation.OperationId ||
-                dropboxOperation.SessionId != backendOperation.SessionId ||
-                !string.Equals(dropboxOperation.CharacterName, backendOperation.CharacterName, StringComparison.Ordinal) ||
-                !string.Equals(dropboxOperation.HomeWorld, backendOperation.HomeWorld, StringComparison.Ordinal) ||
-                dropboxOperation.AmountGil != backendOperation.AmountGil)
+            var executorOperation = executor.GetOperation(backendOperation.OperationId);
+            var readiness = executor.Probe();
+            if (executorOperation is null ||
+                executorOperation.OperationId != backendOperation.OperationId ||
+                executorOperation.SessionId != backendOperation.SessionId ||
+                !string.Equals(executorOperation.CharacterName, backendOperation.CharacterName, StringComparison.Ordinal) ||
+                !string.Equals(executorOperation.HomeWorld, backendOperation.HomeWorld, StringComparison.Ordinal) ||
+                executorOperation.AmountGil != backendOperation.AmountGil)
             {
                 return false;
             }
@@ -181,17 +167,15 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
                 backendOperation.CharacterName,
                 backendOperation.HomeWorld,
                 backendOperation.AmountGil,
-                DropboxPayoutContract.IpcVersion,
-                DropboxPayoutContract.SupportedBuildVersion,
                 backendOperation.UpdatedAt);
-            if (PayoutExecutionPolicy.Validate(leg, backendConnected(), compatibility with { ActiveOperation = null }) is not null)
+            if (PayoutExecutionPolicy.Validate(leg, backendConnected(), readiness with { ActiveOperation = null }) is not null)
             {
                 return false;
             }
 
-            active = new ActivePayout(leg, compatibility.Version.PluginInstanceId);
+            active = new ActivePayout(leg, readiness.ExecutorInstanceId);
             ActiveOperation = backendOperation;
-            reportStatus("Recovered the exact active payout operation from Dropbox and backend state.");
+            reportStatus("Recovered the exact active payout operation from local executor and backend state.");
             return true;
         }
         finally
@@ -211,7 +195,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
             if (disposeTask is null)
             {
                 disposed = true;
-                dropbox.TradeEventReceived -= OnTradeEventReceived;
+                executor.TradeEventReceived -= OnTradeEventReceived;
                 shutdown.Cancel();
                 disposeTask = FinishDisposeAsync(backgroundTasks.ToArray());
             }
@@ -220,7 +204,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         }
     }
 
-    private void OnTradeEventReceived(DropboxTradeEvent tradeEvent)
+    private void OnTradeEventReceived(PayoutTradeEvent tradeEvent)
     {
         lock (backgroundSync)
         {
@@ -235,7 +219,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         }
     }
 
-    private async Task PersistAndSendAsync(DropboxTradeEvent tradeEvent, CancellationToken cancellationToken)
+    private async Task PersistAndSendAsync(PayoutTradeEvent tradeEvent, CancellationToken cancellationToken)
     {
         var entered = false;
         try
@@ -245,7 +229,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
             var execution = active;
             if (execution is null || !MatchesExactly(execution, tradeEvent))
             {
-                reportStatus("Rejected a Dropbox event whose operation or player identity did not match exactly.");
+                reportStatus("Rejected a payout event whose operation or player identity did not match exactly.");
                 return;
             }
 
@@ -253,7 +237,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
                 tradeEvent.OperationId,
                 execution.Leg.LegId,
                 tradeEvent.SequenceNumber,
-                tradeEvent.PluginInstanceId,
+                tradeEvent.ExecutorInstanceId,
                 MapEventType(tradeEvent.EventType),
                 tradeEvent.CharacterName,
                 tradeEvent.HomeWorld,
@@ -270,7 +254,6 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
             if (IsTerminal(tradeEvent))
             {
                 terminalOperations.Add(tradeEvent.OperationId);
-                dropbox.DisablePayoutMode(execution.Leg.SessionId);
                 active = null;
             }
         }
@@ -377,27 +360,27 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         }
     }
 
-    private static bool MatchesExactly(ActivePayout execution, DropboxTradeEvent tradeEvent) =>
+    private static bool MatchesExactly(ActivePayout execution, PayoutTradeEvent tradeEvent) =>
         tradeEvent.OperationId == execution.Leg.OperationId &&
         tradeEvent.SessionId == execution.Leg.SessionId &&
-        tradeEvent.PluginInstanceId == execution.DropboxPluginInstanceId &&
+        tradeEvent.ExecutorInstanceId == execution.ExecutorInstanceId &&
         string.Equals(tradeEvent.CharacterName, execution.Leg.CharacterName, StringComparison.Ordinal) &&
         string.Equals(tradeEvent.HomeWorld, execution.Leg.HomeWorld, StringComparison.Ordinal) &&
         tradeEvent.AmountGil == execution.Leg.AmountGil &&
         tradeEvent.SequenceNumber > 0;
 
-    private void UpdateOperation(PayoutLegDto leg, DropboxTradeEvent tradeEvent)
+    private void UpdateOperation(PayoutLegDto leg, PayoutTradeEvent tradeEvent)
     {
         var state = tradeEvent.IsAmbiguous
             ? PayoutOperationState.Failed
             : tradeEvent.EventType switch
             {
-                DropboxTradeEventType.PlayerDetected => PayoutOperationState.WaitingForPlayer,
-                DropboxTradeEventType.TradeOpened => PayoutOperationState.TradeOpened,
-                DropboxTradeEventType.TradeLocked => PayoutOperationState.TradeLocked,
-                DropboxTradeEventType.TradeCompleted => PayoutOperationState.Completed,
-                DropboxTradeEventType.TradeCancelled => PayoutOperationState.Cancelled,
-                DropboxTradeEventType.TradeFailed or DropboxTradeEventType.TradeTimedOut => PayoutOperationState.Failed,
+                PayoutTradeEventType.PlayerDetected => PayoutOperationState.WaitingForPlayer,
+                PayoutTradeEventType.TradeOpened => PayoutOperationState.TradeOpened,
+                PayoutTradeEventType.TradeLocked => PayoutOperationState.TradeLocked,
+                PayoutTradeEventType.TradeCompleted => PayoutOperationState.Completed,
+                PayoutTradeEventType.TradeCancelled => PayoutOperationState.Cancelled,
+                PayoutTradeEventType.TradeFailed or PayoutTradeEventType.TradeTimedOut => PayoutOperationState.Failed,
                 _ => throw new ArgumentOutOfRangeException(nameof(tradeEvent)),
             };
         ActiveOperation = ToOperation(leg, state, tradeEvent.ErrorCode, tradeEvent.ErrorMessage);
@@ -419,21 +402,21 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
             errorMessage,
             DateTimeOffset.UtcNow);
 
-    private static bool IsTerminal(DropboxTradeEvent tradeEvent) =>
+    private static bool IsTerminal(PayoutTradeEvent tradeEvent) =>
         tradeEvent.IsAmbiguous || tradeEvent.EventType is
-            (DropboxTradeEventType.TradeCompleted or DropboxTradeEventType.TradeCancelled or DropboxTradeEventType.TradeFailed or DropboxTradeEventType.TradeTimedOut);
+            (PayoutTradeEventType.TradeCompleted or PayoutTradeEventType.TradeCancelled or PayoutTradeEventType.TradeFailed or PayoutTradeEventType.TradeTimedOut);
 
-    private static PayoutEventType MapEventType(DropboxTradeEventType eventType) => eventType switch
+    private static PayoutEventType MapEventType(PayoutTradeEventType eventType) => eventType switch
     {
-        DropboxTradeEventType.PlayerDetected => PayoutEventType.PlayerDetected,
-        DropboxTradeEventType.TradeOpened => PayoutEventType.TradeOpened,
-        DropboxTradeEventType.TradeLocked => PayoutEventType.TradeLocked,
-        DropboxTradeEventType.TradeCompleted => PayoutEventType.TradeCompleted,
-        DropboxTradeEventType.TradeCancelled => PayoutEventType.TradeCancelled,
-        DropboxTradeEventType.TradeFailed => PayoutEventType.TradeFailed,
-        DropboxTradeEventType.TradeTimedOut => PayoutEventType.TradeTimedOut,
+        PayoutTradeEventType.PlayerDetected => PayoutEventType.PlayerDetected,
+        PayoutTradeEventType.TradeOpened => PayoutEventType.TradeOpened,
+        PayoutTradeEventType.TradeLocked => PayoutEventType.TradeLocked,
+        PayoutTradeEventType.TradeCompleted => PayoutEventType.TradeCompleted,
+        PayoutTradeEventType.TradeCancelled => PayoutEventType.TradeCancelled,
+        PayoutTradeEventType.TradeFailed => PayoutEventType.TradeFailed,
+        PayoutTradeEventType.TradeTimedOut => PayoutEventType.TradeTimedOut,
         _ => throw new ArgumentOutOfRangeException(nameof(eventType)),
     };
 
-    private sealed record ActivePayout(PayoutLegDto Leg, Guid DropboxPluginInstanceId);
+    private sealed record ActivePayout(PayoutLegDto Leg, Guid ExecutorInstanceId);
 }

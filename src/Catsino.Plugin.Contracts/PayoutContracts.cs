@@ -29,8 +29,6 @@ public sealed record PayoutLegDto(
     string CharacterName,
     string HomeWorld,
     long AmountGil,
-    string RequiredDropboxIpcVersion,
-    string RequiredDropboxBuildVersion,
     DateTimeOffset IssuedAt);
 
 public sealed record PayoutOperationDto(

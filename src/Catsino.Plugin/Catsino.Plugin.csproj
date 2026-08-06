@@ -12,7 +12,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Catsino.Plugin.Contracts\Catsino.Plugin.Contracts.csproj" />
-    <ProjectReference Include="..\Catsino.Dropbox.Contracts\Catsino.Dropbox.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />

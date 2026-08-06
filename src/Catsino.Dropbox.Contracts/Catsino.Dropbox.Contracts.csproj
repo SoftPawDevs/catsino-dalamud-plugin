@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>Catsino.Dropbox.Contracts</AssemblyName>
-    <RootNamespace>Catsino.Dropbox.Contracts</RootNamespace>
-    <Version>1.0.0</Version>
-  </PropertyGroup>
-</Project>

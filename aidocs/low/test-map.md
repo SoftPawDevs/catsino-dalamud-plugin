@@ -20,9 +20,9 @@
 - `tests/Catsino.Plugin.Tests/PayoutExecutionPolicyTests.cs`: payout gating rules.
 - `tests/Catsino.Plugin.Tests/PayoutCoordinatorTests.cs`: payout orchestration.
 
-## Dropbox Integration
+## Trade Execution
 
-- `tests/Catsino.Dropbox.IntegrationTests/TradeCompletionDetectorTests.cs`: language-independent trade completion behavior.
+- `tests/Catsino.Plugin.Tests/PayoutCoordinatorTests.cs`: payout executor orchestration and exact event matching.
 
 ## How To Use This Map
 

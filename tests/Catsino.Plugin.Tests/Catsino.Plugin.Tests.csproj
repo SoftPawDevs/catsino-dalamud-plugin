@@ -15,7 +15,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Catsino.Plugin\Catsino.Plugin.csproj" />
     <ProjectReference Include="..\..\src\Catsino.Plugin.Contracts\Catsino.Plugin.Contracts.csproj" />
-    <ProjectReference Include="..\..\src\Catsino.Dropbox.Contracts\Catsino.Dropbox.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\docs\protocol\backend-v1.fixture.json" Link="backend-v1.fixture.json" CopyToOutputDirectory="PreserveNewest" />

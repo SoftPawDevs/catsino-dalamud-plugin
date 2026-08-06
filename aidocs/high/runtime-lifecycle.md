@@ -34,7 +34,7 @@
 ## Payout Workflow
 
 1. Backend hub sends a payout leg.
-2. `PayoutCoordinator` validates readiness and starts Dropbox execution.
+2. `PayoutCoordinator` validates readiness and starts the built-in trade executor.
 3. Observed payout events are written to the durable outbox first.
 4. Events are sent to the backend and removed only after acknowledgement.
 

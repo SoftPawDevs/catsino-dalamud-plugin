@@ -219,9 +219,9 @@ public sealed class CatsinoWindow : Window
             return;
         }
 
-        // A payout that never reaches the trade (e.g. the target never became targetable) leaves
-        // the player's gil Reserved and blocks new cash outs. Only the active, not-yet-open
-        // operation can be aborted here; aborting returns the reserved gil to the player.
+        // A payout that never reaches the trade (e.g. the target never became targetable) keeps
+        // the player's tokens inside the active cash-out. Only the active, not-yet-open
+        // operation can be aborted here; aborting returns the unpaid gross tokens to the player.
         if (operation.OperationId == runtime.ActivePayout?.OperationId &&
             operation.State is PayoutOperationState.Queued or PayoutOperationState.WaitingForPlayer)
         {
@@ -258,21 +258,17 @@ public sealed class CatsinoWindow : Window
 
     private void DrawStatus()
     {
-        var dropbox = runtime.DropboxCapabilities;
+        var executor = runtime.PayoutExecutorStatus;
         ImGui.TextUnformatted($"Plugin version: {PluginVersion.Current}");
         ImGui.TextUnformatted($"Contract version: {ContractVersion.Current}");
         ImGui.TextUnformatted($"Backend: {(runtime.IsBackendConnected ? "connected" : "disconnected")}");
         ImGui.TextUnformatted($"Heartbeat: {(runtime.LastHeartbeatAt?.ToString("u") ?? "not sent")}");
         ImGui.TextUnformatted($"Pending financial outbox events: {runtime.PendingOutboxEvents}");
-        Section("Dropbox");
-        ImGui.TextUnformatted($"Available: {dropbox.IsAvailable}");
-        ImGui.TextUnformatted($"IPC version: {dropbox.IpcVersion ?? "unavailable"}");
-        ImGui.TextUnformatted($"Build version: {dropbox.BuildVersion ?? "unavailable"}");
-        ImGui.TextUnformatted($"Language-independent state: {dropbox.SupportsLanguageIndependentTradeState}");
-        foreach (var capability in dropbox.Capabilities)
-        {
-            ImGui.BulletText(capability);
-        }
+        Section("Payout Executor");
+        ImGui.TextUnformatted($"Ready: {executor.IsReady}");
+        ImGui.TextUnformatted($"Instance: {executor.ExecutorInstanceId:D}");
+        ImGui.TextUnformatted($"Status: {executor.Status}");
+        ImGui.TextUnformatted($"Active operation: {(executor.ActiveOperation?.OperationId.ToString("D") ?? "none")}");
     }
 
     private void Run(Func<Task> action) => _ = RunCoreAsync(action);

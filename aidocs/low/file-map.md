@@ -19,12 +19,13 @@
 - `src/Catsino.Plugin/Backend/PluginHubClient.cs`: SignalR lifecycle and server-pushed commands.
 - `src/Catsino.Plugin/Backend/FinancialIdempotency.cs`: stable financial idempotency handling.
 
-## Payout And Dropbox
+## Payout And Trade Execution
 
 - `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`: payout orchestration and backend event transport.
 - `src/Catsino.Plugin/Payout/PayoutExecutionPolicy.cs`: readiness and safety checks before execution.
 - `src/Catsino.Plugin/Payout/PersistentPayoutOutbox.cs`: durable event storage and replay.
-- `src/Catsino.Plugin/Dropbox/DalamudDropboxPayoutClient.cs`: Dropbox IPC adapter.
+- `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`: built-in outgoing payout trade executor.
+- `src/Catsino.Plugin/Payout/PayoutTradeModels.cs`: structured trade observation and executor event models.
 
 ## Security And Config
 
@@ -38,6 +39,4 @@
 - `src/Catsino.Plugin.Contracts/DealerContracts.cs`: authorization and dealer DTOs.
 - `src/Catsino.Plugin.Contracts/GameSessionContracts.cs`: session and roster DTOs.
 - `src/Catsino.Plugin.Contracts/PayoutContracts.cs`: payout DTOs.
-- `src/Catsino.Dropbox.Contracts/DropboxPayoutContract.cs`: Dropbox IPC contracts.
 - `docs/protocol/backend-v1.md`: backend protocol reference.
-- `docs/protocol/dropbox-ipc-v1.md`: Dropbox IPC reference.

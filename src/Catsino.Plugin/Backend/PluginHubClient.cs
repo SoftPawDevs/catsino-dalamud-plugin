@@ -85,7 +85,7 @@ public sealed class PluginHubClient : IAsyncDisposable
     public Task ReportDepositStatusAsync(Guid sessionId, Guid playerId, Guid idempotencyKey, string status, string? errorCode = null) =>
         SendIfConnectedAsync(PluginHubProtocol.ReportDepositStatus, sessionId, playerId, idempotencyKey, status, errorCode);
 
-    public Task ReportDropboxStatusAsync(DropboxStatusDto status) => SendIfConnectedAsync(PluginHubProtocol.ReportDropboxStatus, status);
+    public Task ReportPayoutExecutorStatusAsync(PayoutExecutorStatusDto status) => SendIfConnectedAsync(PluginHubProtocol.ReportPayoutExecutorStatus, status);
 
     public Task ReportOutgoingTradeStatusAsync(PayoutOperationDto status) => SendIfConnectedAsync(PluginHubProtocol.ReportOutgoingTradeStatus, status);
 

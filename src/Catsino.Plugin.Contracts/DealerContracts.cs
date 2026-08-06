@@ -6,29 +6,19 @@ public sealed record CharacterIdentityDto(
     string CurrentWorld,
     bool IsLoggedIn);
 
-public sealed record DropboxCapabilitiesDto(
-    bool IsAvailable,
-    string? IpcVersion,
-    string? BuildVersion,
-    IReadOnlyList<string> Capabilities,
-    bool SupportsLanguageIndependentTradeState,
-    Guid? PluginInstanceId);
-
 public sealed record AuthorizeDealerRequest(
     string ActivationJwt,
     CharacterIdentityDto Character,
     Guid DeviceId,
     string PluginVersion,
-    string ContractVersion,
-    DropboxCapabilitiesDto Dropbox);
+    string ContractVersion);
 
 public sealed record RefreshDealerRequest(
     string RefreshCredential,
     CharacterIdentityDto Character,
     Guid DeviceId,
     string PluginVersion,
-    string ContractVersion,
-    DropboxCapabilitiesDto Dropbox);
+    string ContractVersion);
 
 public sealed record DealerAuthorizationDto(
     Guid PairingId,
@@ -42,8 +32,7 @@ public sealed record PluginPairingRequest(
     Guid DeviceId,
     CharacterIdentityDto Character,
     string PluginVersion,
-    string ContractVersion,
-    DropboxCapabilitiesDto Dropbox);
+    string ContractVersion);
 
 public sealed record PluginPairingDto(
     Guid PairingId,
@@ -56,14 +45,13 @@ public sealed record PluginHeartbeatRequest(
     CharacterIdentityDto Character,
     string PluginVersion,
     string ContractVersion,
-    DropboxCapabilitiesDto Dropbox,
     int PendingOutboxEvents,
     DateTimeOffset SentAt);
 
-public sealed record DropboxStatusDto(
-    bool IsAvailable,
-    bool IsCompatible,
-    bool PayoutModeEnabled,
+public sealed record PayoutExecutorStatusDto(
+    Guid ExecutorInstanceId,
+    bool IsReady,
+    bool HasActiveOperation,
     Guid? ActiveOperationId,
     string? Status,
     DateTimeOffset ObservedAt);

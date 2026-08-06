@@ -75,14 +75,14 @@ public sealed class ContractSerializationTests
         var now = new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
         var sessionId = Guid.NewGuid();
         var player = new SessionRosterPlayerDto(
-            Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 1_000, -250, 750, 50,
+            Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 750,
             true, "queued", "clear", now);
         var invite = new PendingInviteDto(
             Guid.NewGuid(), sessionId, "Other Player", "Phoenix", 500, now, now.AddMinutes(2));
         var roster = new SessionRosterDto(sessionId, [player], [invite], now);
 
         Assert.Equal(
-            ["membershipId", "sessionId", "characterName", "homeWorld", "balanceGil", "netGil", "tokens", "reservedTokens", "bettingLocked", "payoutState", "reconciliationState", "joinedAt"],
+            ["membershipId", "sessionId", "characterName", "homeWorld", "tokens", "bettingLocked", "payoutState", "reconciliationState", "joinedAt"],
             PropertyNames(player));
         Assert.Equal(
             ["inviteId", "sessionId", "characterName", "homeWorld", "initialBalanceGil", "createdAt", "expiresAt"],
