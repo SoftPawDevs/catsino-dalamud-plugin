@@ -9,8 +9,8 @@
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.0/Catsino.Plugin.zip",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.0/Catsino.Plugin.zip",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.0/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.0/Catsino.Plugin.zip?download=1",
     "Changelog": "Add backend-authoritative dealer roster tables, signed balance adjustments, cash-out confirmation, pending invites, session removal, and multi-session windows while retaining native /tell delivery.",
     "Tags": ["dealer", "games"]
   }
