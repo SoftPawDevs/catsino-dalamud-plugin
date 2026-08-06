@@ -28,7 +28,13 @@ public sealed record GameSessionDto(
     DateTimeOffset? OpenedAt,
     DateTimeOffset? ClosedAt);
 
-public sealed record CreateGameSessionRequest(string GameType, decimal FeePercent);
+public static class PlinkoBetDefaults
+{
+    public const long MinBet = 50_000;
+    public const long MaxBet = 1_000_000;
+}
+
+public sealed record CreateGameSessionRequest(string GameType, decimal FeePercent, long? MinBet = null, long? MaxBet = null);
 
 public sealed record UpdateSessionFeeRequest(decimal FeePercent);
 
@@ -64,7 +70,8 @@ public sealed record SessionRosterPlayerDto(
     bool BettingLocked,
     string PayoutState,
     string ReconciliationState,
-    DateTimeOffset JoinedAt);
+    DateTimeOffset JoinedAt,
+    DateTimeOffset? CashOutRequestedAt = null);
 
 public sealed record PendingInviteDto(
     Guid InviteId,

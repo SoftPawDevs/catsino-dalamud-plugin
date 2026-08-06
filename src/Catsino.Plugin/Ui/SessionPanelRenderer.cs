@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Numerics;
 using Catsino.Plugin.Contracts;
 using Catsino.Plugin.Runtime;
 using Catsino.Plugin.Security;
@@ -135,11 +136,17 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
                       adjustment?.State == DealerActionState.Sending ||
                       cashOut?.State == DealerActionState.Sending;
         var payoutLocked = HasOpenPayout(player.PayoutState);
+        var cashOutRequested = player.CashOutRequestedAt is not null && !payoutLocked;
 
         ImGui.PushID(player.MembershipId.ToString("D"));
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
         ImGui.TextUnformatted(player.CharacterName);
+        if (cashOutRequested)
+        {
+            ImGui.TextColored(new Vector4(0.36f, 0.90f, 0.83f, 1f), "Cash-out requested");
+        }
+
         ImGui.TextDisabled($"Payout: {player.PayoutState} | Reconciliation: {player.ReconciliationState}");
         ShowTooltip($"Betting locked: {player.BettingLocked}\nJoined: {player.JoinedAt:u}");
 
@@ -173,12 +180,24 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         EndDisabled(rowBusy || payoutLocked || player.BettingLocked || adjustment is not null);
         ImGui.SameLine();
         BeginDisabled(rowBusy || payoutLocked || cashOut is not null);
-        if (ImGui.Button("Cash out"))
+        if (ImGui.Button(cashOutRequested ? "Cash out (requested)" : "Cash out"))
         {
             RunPlayer(state, key, () => runtime.RequestCashOutPreviewAsync(key));
         }
 
         EndDisabled(rowBusy || payoutLocked || cashOut is not null);
+        if (cashOutRequested)
+        {
+            ImGui.SameLine();
+            BeginDisabled(rowBusy || cashOut is not null);
+            if (ImGui.Button("Dismiss request"))
+            {
+                RunPlayer(state, key, () => runtime.DismissCashOutRequestAsync(key));
+            }
+
+            EndDisabled(rowBusy || cashOut is not null);
+        }
+
         if (payoutLocked)
         {
             ImGui.TextDisabled("Payout open");

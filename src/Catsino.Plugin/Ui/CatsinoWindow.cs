@@ -14,6 +14,8 @@ public sealed class CatsinoWindow : Window
 {
     private string activationJwt = string.Empty;
     private string createFee;
+    private string createMinBet;
+    private string createMaxBet;
     private string validationMessage = string.Empty;
     private bool busy;
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
@@ -26,6 +28,8 @@ public sealed class CatsinoWindow : Window
         this.runtime = runtime;
         this.sessionPanel = sessionPanel;
         createFee = runtime.DefaultDealerFeePercent.ToString(CultureInfo.InvariantCulture);
+        createMinBet = runtime.DefaultMinBet.ToString(CultureInfo.InvariantCulture);
+        createMaxBet = runtime.DefaultMaxBet.ToString(CultureInfo.InvariantCulture);
     }
 
     public override void PreDraw()
@@ -140,16 +144,32 @@ public sealed class CatsinoWindow : Window
         }
 
         ImGui.SameLine();
+        ImGui.SetNextItemWidth(120);
+        ImGui.InputText("Min bet", ref createMinBet, 20, ImGuiInputTextFlags.CharsDecimal);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(120);
+        ImGui.InputText("Max bet", ref createMaxBet, 20, ImGuiInputTextFlags.CharsDecimal);
+
+        ImGui.SameLine();
         if (ImGui.Button("Create Plinko"))
         {
-            if (DealerInputValidator.TryParseFee(createFee, out var fee) &&
-                DealerInputValidator.ValidateFee(fee, GameSessionState.Created) is null)
+            if (!DealerInputValidator.TryParseFee(createFee, out var fee) ||
+                DealerInputValidator.ValidateFee(fee, GameSessionState.Created) is not null)
             {
-                Run(() => runtime.CreatePlinkoSessionAsync(fee));
+                validationMessage = "Default dealer fee must be between 0 and 100 with at most two decimal places.";
+            }
+            else if (!DealerInputValidator.TryParseGil(createMinBet.Trim(), out var minBet) ||
+                     !DealerInputValidator.TryParseGil(createMaxBet.Trim(), out var maxBet))
+            {
+                validationMessage = "Min and max bet must be whole, non-negative gil amounts.";
+            }
+            else if (DealerInputValidator.ValidateBetLimits(minBet, maxBet) is { } betError)
+            {
+                validationMessage = betError;
             }
             else
             {
-                validationMessage = "Default dealer fee must be between 0 and 100 with at most two decimal places.";
+                Run(() => runtime.CreatePlinkoSessionAsync(fee, minBet, maxBet));
             }
         }
 

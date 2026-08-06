@@ -202,6 +202,13 @@ public sealed class CatsinoApiClient : IDisposable
             idempotencyKey,
             cancellationToken);
 
+    public Task DismissCashOutRequestAsync(Guid sessionId, Guid membershipId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAuthorizedNoContentAsync(
+            HttpMethod.Delete,
+            $"api/v1/game-sessions/{sessionId:D}/players/{membershipId:D}/cashout-request",
+            idempotencyKey: idempotencyKey,
+            cancellationToken: cancellationToken);
+
     public Task<SessionRemovalDto> DeleteSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<SessionRemovalDto>(HttpMethod.Delete, $"api/v1/game-sessions/{sessionId:D}", cancellationToken: cancellationToken);
 
@@ -470,5 +477,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.2.2";
+    public const string Current = "1.3.0";
 }

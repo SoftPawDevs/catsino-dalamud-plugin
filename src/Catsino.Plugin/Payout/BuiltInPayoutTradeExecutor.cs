@@ -397,6 +397,18 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         {
             PublishTerminal(PayoutTradeEventType.TradeCompleted, PayoutTradeState.Completed, null, null, false);
         }
+        else if (result == TradeObservationResult.Cancelled)
+        {
+            // The trade window was closed (by the dealer or the paying-out player) before the
+            // payout was confirmed and no gil moved. Cancel cleanly: the backend releases the
+            // unpaid remainder to the player so the dealer can start a fresh cash-out.
+            PublishTerminal(
+                PayoutTradeEventType.TradeCancelled,
+                PayoutTradeState.Cancelled,
+                "tradeWindowClosed",
+                "The trade window closed before the payout was confirmed; no gil was transferred.",
+                false);
+        }
         else if (result == TradeObservationResult.ReconciliationRequired)
         {
             PublishTerminal(

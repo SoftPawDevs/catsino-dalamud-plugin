@@ -68,6 +68,12 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             configuration.DefaultDealerFeePercent = 0m;
         }
 
+        if (DealerInputValidator.ValidateBetLimits(configuration.DefaultMinBet, configuration.DefaultMaxBet) is not null)
+        {
+            configuration.DefaultMinBet = PlinkoBetDefaults.MinBet;
+            configuration.DefaultMaxBet = PlinkoBetDefaults.MaxBet;
+        }
+
         pluginInterface.SavePluginConfig(configuration);
         character = ReadCharacter();
         payoutExecutor = new BuiltInPayoutTradeExecutor(framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
@@ -124,6 +130,10 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     public PayoutExecutorReadiness PayoutExecutorStatus => payoutExecutor.Probe();
 
     public decimal DefaultDealerFeePercent => configuration.DefaultDealerFeePercent;
+
+    public long DefaultMinBet => configuration.DefaultMinBet;
+
+    public long DefaultMaxBet => configuration.DefaultMaxBet;
 
     public int PendingOutboxEvents { get; private set; }
 
@@ -295,7 +305,19 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         pluginInterface.SavePluginConfig(configuration);
     }
 
-    public async Task CreatePlinkoSessionAsync(decimal feePercent, CancellationToken cancellationToken = default)
+    private void SaveDefaultBetLimits(long minBet, long maxBet)
+    {
+        if (configuration.DefaultMinBet == minBet && configuration.DefaultMaxBet == maxBet)
+        {
+            return;
+        }
+
+        configuration.DefaultMinBet = minBet;
+        configuration.DefaultMaxBet = maxBet;
+        pluginInterface.SavePluginConfig(configuration);
+    }
+
+    public async Task CreatePlinkoSessionAsync(decimal feePercent, long minBet, long maxBet, CancellationToken cancellationToken = default)
     {
         var feeError = DealerInputValidator.ValidateFee(feePercent, GameSessionState.Created);
         if (feeError is not null)
@@ -303,10 +325,18 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             throw new InvalidOperationException(feeError);
         }
 
+        var betError = DealerInputValidator.ValidateBetLimits(minBet, maxBet);
+        if (betError is not null)
+        {
+            throw new InvalidOperationException(betError);
+        }
+
+        SaveDefaultBetLimits(minBet, maxBet);
         var epoch = Volatile.Read(ref authorizationEpoch);
-        var logicalOperation = $"session:create:plinko:{feePercent.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var logicalOperation = $"session:create:plinko:{feePercent.ToString(invariant)}:{minBet.ToString(invariant)}:{maxBet.ToString(invariant)}";
         var key = financialKeys.GetOrCreate(logicalOperation);
-        var created = await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", feePercent), key, cancellationToken).ConfigureAwait(false);
+        var created = await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", feePercent, minBet, maxBet), key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
         lock (stateSync)
         {
@@ -575,6 +605,17 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         cashOuts.TryRemove(player, out _);
         ActionDrafts.SetNetZeroConfirmation(player, false);
         SetStatus("The backend accepted the full-token cash out.");
+        await TryRefreshRosterAfterMutationAsync(player.SessionId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DismissCashOutRequestAsync(SessionPlayerKey player, CancellationToken cancellationToken = default)
+    {
+        _ = RequireRosterPlayer(player);
+        var logicalOperation = $"cashout:dismiss:{player.SessionId:D}:{player.MembershipId:D}";
+        var key = financialKeys.GetOrCreate(logicalOperation);
+        await api.DismissCashOutRequestAsync(player.SessionId, player.MembershipId, key, cancellationToken).ConfigureAwait(false);
+        financialKeys.Complete(logicalOperation, key);
+        SetStatus("Cleared the player's cash-out request.");
         await TryRefreshRosterAfterMutationAsync(player.SessionId, cancellationToken).ConfigureAwait(false);
     }
 

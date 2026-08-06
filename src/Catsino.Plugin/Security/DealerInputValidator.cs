@@ -54,6 +54,21 @@ public static partial class DealerInputValidator
     public static string? ValidateInviteBalance(long amountGil) =>
         amountGil < 0 ? "Invite balance must be zero or a positive whole gil amount." : null;
 
+    public static string? ValidateBetLimits(long minBet, long maxBet)
+    {
+        if (minBet < 0)
+        {
+            return "Minimum bet cannot be negative.";
+        }
+
+        if (maxBet < 1 || maxBet < minBet)
+        {
+            return "Maximum bet must be positive and at least the minimum bet.";
+        }
+
+        return null;
+    }
+
     public static bool TryParseFee(string text, out decimal fee) =>
         decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out fee);
 

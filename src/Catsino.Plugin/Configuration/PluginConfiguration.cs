@@ -11,4 +11,8 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public string ApiBaseUrl { get; set; } = "https://152-53-121-56.sslip.io/";
 
     public decimal DefaultDealerFeePercent { get; set; }
+
+    public long DefaultMinBet { get; set; } = Contracts.PlinkoBetDefaults.MinBet;
+
+    public long DefaultMaxBet { get; set; } = Contracts.PlinkoBetDefaults.MaxBet;
 }

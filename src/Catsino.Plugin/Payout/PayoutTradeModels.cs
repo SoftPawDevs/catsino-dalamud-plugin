@@ -121,10 +121,22 @@ public sealed class TradeCompletionDetector(long expectedAmount)
 
         var exactGilDebit = snapshot.GilBefore >= expectedAmount &&
                             snapshot.GilCurrent == snapshot.GilBefore - expectedAmount;
-        return exactPartnerVerified && exactAmountSubmitted && localTradeLocked && partnerTradeLocked &&
-               confirmationAccepted && exactGilDebit
-            ? TradeObservationResult.Completed
-            : TradeObservationResult.ReconciliationRequired;
+        if (exactPartnerVerified && exactAmountSubmitted && localTradeLocked && partnerTradeLocked &&
+            confirmationAccepted && exactGilDebit)
+        {
+            return TradeObservationResult.Completed;
+        }
+
+        // The trade opened but closed without a completed transfer. Either party (the dealer or
+        // the paying-out player) can close the window. If no confirmation was accepted and no
+        // gil left the dealer's wallet, we are certain no payout happened: this is a clean
+        // cancellation, not an ambiguous outcome that would require reconciliation.
+        if (!confirmationAccepted && snapshot.GilCurrent == snapshot.GilBefore)
+        {
+            return TradeObservationResult.Cancelled;
+        }
+
+        return TradeObservationResult.ReconciliationRequired;
     }
 }
 
