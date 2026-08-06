@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.Concurrent;
 using System.Numerics;
 using Catsino.Plugin.Backend;
@@ -9,14 +10,24 @@ using Dalamud.Interface.Windowing;
 
 namespace Catsino.Plugin.Ui;
 
-public sealed class CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer sessionPanel) : Window("Catsino###CatsinoMainWindow")
+public sealed class CatsinoWindow : Window
 {
     private string activationJwt = string.Empty;
-    private string createFee = "0";
+    private string createFee;
     private string reconciliationEvidence = string.Empty;
     private string validationMessage = string.Empty;
     private bool busy;
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
+    private readonly CatsinoRuntime runtime;
+    private readonly SessionPanelRenderer sessionPanel;
+
+    public CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer sessionPanel)
+        : base("Catsino###CatsinoMainWindow")
+    {
+        this.runtime = runtime;
+        this.sessionPanel = sessionPanel;
+        createFee = runtime.DefaultDealerFeePercent.ToString(CultureInfo.InvariantCulture);
+    }
 
     public override void PreDraw()
     {
@@ -121,17 +132,25 @@ public sealed class CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer s
     {
         BeginDisabled(!runtime.IsAuthorized || busy);
         ImGui.SetNextItemWidth(100);
-        ImGui.InputText("Create fee %", ref createFee, 16, ImGuiInputTextFlags.CharsDecimal);
+        if (ImGui.InputText("Default Dealer Fee %", ref createFee, 16, ImGuiInputTextFlags.CharsDecimal) &&
+            DealerInputValidator.TryParseFee(createFee, out var configuredFee) &&
+            DealerInputValidator.ValidateFee(configuredFee, GameSessionState.Created) is null)
+        {
+            runtime.SetDefaultDealerFeePercent(configuredFee);
+            validationMessage = string.Empty;
+        }
+
         ImGui.SameLine();
         if (ImGui.Button("Create Plinko"))
         {
-            if (DealerInputValidator.TryParseFee(createFee, out var fee))
+            if (DealerInputValidator.TryParseFee(createFee, out var fee) &&
+                DealerInputValidator.ValidateFee(fee, GameSessionState.Created) is null)
             {
                 Run(() => runtime.CreatePlinkoSessionAsync(fee));
             }
             else
             {
-                validationMessage = "Create fee must be a decimal from 0 to 100.";
+                validationMessage = "Default dealer fee must be between 0 and 100 with at most two decimal places.";
             }
         }
 

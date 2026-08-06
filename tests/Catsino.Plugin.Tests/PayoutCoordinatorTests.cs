@@ -49,6 +49,32 @@ public sealed class PayoutCoordinatorTests : IDisposable
         Assert.Equal(1, fakeDropbox.QueueCount);
     }
 
+    [Theory]
+    [InlineData("Wrong Name", "Ragnarok", 900)]
+    [InlineData("Exact Player", "Wrong World", 900)]
+    [InlineData("Exact Player", "Ragnarok", 901)]
+    public async Task RejectsDropboxEventsThatDoNotMatchExactIdentityOrAmount(string characterName, string homeWorld, long amountGil)
+    {
+        var fakeDropbox = new FakeDropbox();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeDropbox, outbox, new FakeTransport(), () => true, _ => { });
+        var leg = TestData.Leg();
+
+        await coordinator.StartBackendLegAsync(leg);
+
+        fakeDropbox.Emit(TestData.DropboxEvent(leg, DropboxTradeEventType.TradeCompleted, ambiguous: false) with
+        {
+            CharacterName = characterName,
+            HomeWorld = homeWorld,
+            AmountGil = amountGil,
+        });
+
+        await Task.Delay(50);
+
+        Assert.Equal(PayoutOperationState.WaitingForPlayer, coordinator.ActiveOperation?.State);
+        Assert.Equal(0, await outbox.CountAsync());
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(directory))

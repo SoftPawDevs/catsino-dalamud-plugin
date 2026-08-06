@@ -3,7 +3,7 @@
 ## Startup
 
 1. `src/Catsino.Plugin/Plugin.cs` registers `/catsino`, builds windows, and creates `CatsinoRuntime`.
-2. `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` loads configuration, ensures a device id exists, reads current character identity, and creates local services.
+2. `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` loads configuration, ensures a device id exists, normalizes the persisted default dealer fee, reads current character identity, and creates local services.
 3. The runtime initializes credential storage, durable payout outbox, HTTP client, hub client, and payout coordinator.
 
 ## Authorization
@@ -20,6 +20,7 @@
 ## Session Workflow
 
 - Session loading and selection are coordinated in `CatsinoRuntime`.
+- The Sessions tab keeps a persisted `Default Dealer Fee %` value that becomes the starting fee for newly created Plinko sessions.
 - Session windows are opened from `Plugin.cs` and rendered through `Ui/SessionWindow.cs` and `Ui/SessionPanelRenderer.cs`.
 - Roster data is cached and refreshed through `Runtime/SessionRosterStore.cs`.
 

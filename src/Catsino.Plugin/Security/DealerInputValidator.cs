@@ -28,9 +28,9 @@ public static partial class DealerInputValidator
             return "The fee can only be changed while the session is Created.";
         }
 
-        if (feePercent is < 0m or > 100m)
+        if (decimal.Round(feePercent, 2) != feePercent || feePercent is < 0m or > 100m)
         {
-            return "Fee percentage must be between 0 and 100.";
+            return "Fee percentage must be between 0 and 100 with at most two decimal places.";
         }
 
         return null;

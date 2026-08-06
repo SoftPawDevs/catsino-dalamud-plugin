@@ -10,6 +10,7 @@ public sealed class ValidationAndSecurityTests
     [Theory]
     [InlineData(-0.01)]
     [InlineData(100.01)]
+    [InlineData(1.001)]
     public void FeeMustRemainWithinRange(double value)
     {
         Assert.NotNull(DealerInputValidator.ValidateFee((decimal)value, GameSessionState.Created));

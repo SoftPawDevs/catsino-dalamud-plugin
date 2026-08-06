@@ -11,6 +11,7 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 - It runs inside FFXIV through Dalamud.
 - It authorizes the dealer and connects outward to the backend.
 - It manages sessions, invites, player roster views, dealer actions, and payout execution.
+- It stores a per-plugin default dealer fee that pre-fills newly created sessions.
 - It contains no authoritative balance engine, no backend secrets, no database logic, and no trusted Plinko outcome logic.
 - Dropbox is used only for outgoing payout execution through a versioned IPC surface.
 

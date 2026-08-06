@@ -31,6 +31,7 @@
 - No backend acknowledgement means the event must remain replayable.
 - Idempotency keys must stay stable for financial actions.
 - Exact protocol versioning matters more than guess-based compatibility.
+- Dropbox trade events are ignored unless operation id, plugin instance, exact player identity, and amount all match the active leg.
 
 ## Where To Validate Changes
 

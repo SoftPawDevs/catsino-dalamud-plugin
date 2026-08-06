@@ -58,6 +58,11 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             configuration.DeviceId = Guid.NewGuid();
         }
 
+        if (DealerInputValidator.ValidateFee(configuration.DefaultDealerFeePercent, GameSessionState.Created) is not null)
+        {
+            configuration.DefaultDealerFeePercent = 0m;
+        }
+
         pluginInterface.SavePluginConfig(configuration);
         character = ReadCharacter();
         dropbox = new DalamudDropboxPayoutClient(pluginInterface);
@@ -119,6 +124,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     public SessionActionDraftStore ActionDrafts { get; } = new();
 
     public DropboxCapabilitiesDto DropboxCapabilities => GetDropboxCapabilities();
+
+    public decimal DefaultDealerFeePercent => configuration.DefaultDealerFeePercent;
 
     public int PendingOutboxEvents { get; private set; }
 
@@ -271,6 +278,23 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         {
             trackedSessions.Add(sessionId);
         }
+    }
+
+    public void SetDefaultDealerFeePercent(decimal feePercent)
+    {
+        var error = DealerInputValidator.ValidateFee(feePercent, GameSessionState.Created);
+        if (error is not null)
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        if (configuration.DefaultDealerFeePercent == feePercent)
+        {
+            return;
+        }
+
+        configuration.DefaultDealerFeePercent = feePercent;
+        pluginInterface.SavePluginConfig(configuration);
     }
 
     public async Task CreatePlinkoSessionAsync(decimal feePercent, CancellationToken cancellationToken = default)

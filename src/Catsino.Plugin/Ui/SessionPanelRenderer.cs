@@ -99,13 +99,14 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.SameLine();
         if (ImGui.Button("Update fee"))
         {
-            if (DealerInputValidator.TryParseFee(state.EditFee, out var fee))
+            if (DealerInputValidator.TryParseFee(state.EditFee, out var fee) &&
+                DealerInputValidator.ValidateFee(fee, GameSessionState.Created) is null)
             {
                 RunSession(state, () => runtime.UpdateFeeAsync(session.SessionId, fee));
             }
             else
             {
-                state.ValidationMessage = "Fee must be a decimal from 0 to 100.";
+                state.ValidationMessage = "Fee must be between 0 and 100 with at most two decimal places.";
             }
         }
 
