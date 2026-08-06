@@ -14,7 +14,6 @@ public sealed class CatsinoWindow : Window
 {
     private string activationJwt = string.Empty;
     private string createFee;
-    private string reconciliationEvidence = string.Empty;
     private string validationMessage = string.Empty;
     private bool busy;
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
@@ -190,7 +189,7 @@ public sealed class CatsinoWindow : Window
 
     private void DrawPayouts()
     {
-        ImGui.TextWrapped("Only backend-issued exact payout legs can be queued. Ambiguous outcomes require reconciliation and are never retried.");
+        ImGui.TextWrapped("Only backend-issued exact payout legs can be queued. Failed payouts release their unpaid remainder back to the player so the dealer can start a new cash out.");
         if (runtime.ActivePayout is { } active)
         {
             Section("Active operation");
@@ -216,25 +215,7 @@ public sealed class CatsinoWindow : Window
     {
         if (operation.State == PayoutOperationState.Failed)
         {
-            BeginDisabled(busy);
-            if (ImGui.Button("Request backend retry"))
-            {
-                Run(() => runtime.RequestCashoutRetryAsync(operation.OperationId));
-            }
-
-            EndDisabled(busy);
-        }
-
-        if (operation.State == PayoutOperationState.ReconciliationRequired)
-        {
-            ImGui.InputTextMultiline("Dealer evidence", ref reconciliationEvidence, 1024, new Vector2(-1, 70));
-            BeginDisabled(busy || string.IsNullOrWhiteSpace(reconciliationEvidence));
-            if (ImGui.Button("Submit reconciliation evidence"))
-            {
-                Run(() => runtime.SubmitReconciliationAsync(operation.OperationId, reconciliationEvidence));
-            }
-
-            EndDisabled(busy || string.IsNullOrWhiteSpace(reconciliationEvidence));
+            ImGui.TextDisabled("The unpaid remainder is back in the player's available balance. Start a new cash out to retry the remaining gil.");
         }
     }
 

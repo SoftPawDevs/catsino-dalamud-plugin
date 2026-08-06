@@ -13,10 +13,10 @@ public sealed class ProtocolFixtureTests
         var root = document.RootElement;
         Assert.Equal("1.1.0", root.GetProperty("contractVersion").GetString());
         var routes = root.GetProperty("routes").EnumerateArray().ToArray();
-        Assert.Equal(28, routes.Length);
+        Assert.Equal(27, routes.Length);
 
         var financialRoutes = routes.Where(route => route.GetProperty("financialMutation").GetBoolean()).ToArray();
-        Assert.Equal(11, financialRoutes.Length);
+        Assert.Equal(10, financialRoutes.Length);
         Assert.All(financialRoutes, route => Assert.True(route.GetProperty("idempotencyKeyRequired").GetBoolean()));
         var inviteRoute = Assert.Single(routes, route => route.GetProperty("operation").GetString() == "createInvite");
         Assert.False(inviteRoute.GetProperty("financialMutation").GetBoolean());
@@ -75,7 +75,7 @@ public sealed class ProtocolFixtureTests
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 100, Guid.NewGuid(), now));
         AssertDefinitionMatches(root, "PayoutOperationDto", new PayoutOperationDto(
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 100,
-            PayoutOperationState.ReconciliationRequired, "error", "message", now));
+            PayoutOperationState.Failed, "error", "message", now));
         AssertDefinitionMatches(root, "PayoutEventDto", new PayoutEventDto(
             Guid.NewGuid(), Guid.NewGuid(), 1, Guid.NewGuid(), PayoutEventType.TradeFailed,
             "Exact Player", "Ragnarok", 100, now, "error", "message", true));

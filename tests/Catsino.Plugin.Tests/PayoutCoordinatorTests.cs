@@ -30,7 +30,7 @@ public sealed class PayoutCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task AmbiguousOutcomeRequiresReconciliationAndWaitsForExactAck()
+    public async Task AmbiguousOutcomeIsTreatedAsFailedAndWaitsForExactAck()
     {
         var fakeDropbox = new FakeDropbox();
         var outbox = new PersistentPayoutOutbox(directory);
@@ -40,7 +40,7 @@ public sealed class PayoutCoordinatorTests : IDisposable
         await coordinator.StartBackendLegAsync(leg);
 
         fakeDropbox.Emit(TestData.DropboxEvent(leg, DropboxTradeEventType.TradeFailed, ambiguous: true));
-        await WaitUntilAsync(() => coordinator.ActiveOperation?.State == PayoutOperationState.ReconciliationRequired);
+        await WaitUntilAsync(() => coordinator.ActiveOperation?.State == PayoutOperationState.Failed);
         Assert.Equal(1, await outbox.CountAsync());
 
         transport.ReturnWrongAck = false;

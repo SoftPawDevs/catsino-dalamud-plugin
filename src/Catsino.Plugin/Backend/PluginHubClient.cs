@@ -44,7 +44,6 @@ public sealed class PluginHubClient : IAsyncDisposable
         connection.On(PluginHubProtocol.RefreshDealerSessions, () => RefreshDealerSessions?.Invoke());
         connection.On<PayoutLegDto>(PluginHubProtocol.QueuePayoutLeg, leg => QueuePayoutLeg?.Invoke(leg));
         connection.On<CancelPayoutOperationDto>(PluginHubProtocol.CancelPayoutOperation, request => CancelPayoutOperation?.Invoke(request));
-        connection.On<ReconciliationRequestDto>(PluginHubProtocol.RequestPayoutReconciliation, request => RequestPayoutReconciliation?.Invoke(request));
         connection.On<Guid>(PluginHubProtocol.SessionClosed, sessionId => SessionClosed?.Invoke(sessionId));
         connection.On<string>(PluginHubProtocol.DealerAuthorizationRevoked, reason => DealerAuthorizationRevoked?.Invoke(reason));
         connection.On<string>(PluginHubProtocol.ReconnectRequired, reason => ReconnectRequired?.Invoke(reason));
@@ -53,7 +52,6 @@ public sealed class PluginHubClient : IAsyncDisposable
     public event Action? RefreshDealerSessions;
     public event Action<PayoutLegDto>? QueuePayoutLeg;
     public event Action<CancelPayoutOperationDto>? CancelPayoutOperation;
-    public event Action<ReconciliationRequestDto>? RequestPayoutReconciliation;
     public event Action<Guid>? SessionClosed;
     public event Action<string>? DealerAuthorizationRevoked;
     public event Action<string>? ReconnectRequired;

@@ -20,7 +20,7 @@ public sealed class ApiProtocolTests
         var sessionId = ProtocolHandler.SessionId;
         var playerId = ProtocolHandler.PlayerId;
         var operationId = ProtocolHandler.OperationId;
-        var keys = Enumerable.Range(0, 9).Select(_ => Guid.NewGuid()).ToArray();
+        var keys = Enumerable.Range(0, 8).Select(_ => Guid.NewGuid()).ToArray();
         await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", 0m), keys[0]);
         await api.UpdateSessionFeeAsync(sessionId, new UpdateSessionFeeRequest(5m), keys[1]);
         await api.OpenSessionAsync(sessionId, keys[2]);
@@ -32,8 +32,6 @@ public sealed class ApiProtocolTests
         var payoutEvent = TestData.PayoutEvent() with { OperationId = operationId, SequenceNumber = 7 };
         await api.ReportPayoutEventAsync(payoutEvent);
         await api.AcknowledgePayoutEventAsync(new PayoutEventAckDto(operationId, 7, DateTimeOffset.UtcNow));
-        await api.RetryCashoutAsync(new RetryCashoutRequest(operationId, "dealerTriggered"), keys[7]);
-        await api.ReconcileCashoutAsync(new ReconcileCashoutRequest(operationId, "evidence"), keys[8]);
 
         AssertMutation(handler, HttpMethod.Post, "/api/v1/game-sessions", keys[0]);
         AssertMutation(handler, HttpMethod.Patch, $"/api/v1/game-sessions/{sessionId:D}/fee", keys[1]);
@@ -49,8 +47,6 @@ public sealed class ApiProtocolTests
             HttpMethod.Post,
             $"/api/v1/payout-events/{operationId:D}/7/ack",
             FinancialIdempotency.ForPayoutAcknowledgment(operationId, 7));
-        AssertMutation(handler, HttpMethod.Post, $"/api/v1/cashouts/{operationId:D}/retry", keys[7]);
-        AssertMutation(handler, HttpMethod.Post, $"/api/v1/cashouts/{operationId:D}/reconciliation", keys[8]);
         AssertBody(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/players/{playerId:D}/balance-adjustments", "{\"amountGil\":-100}");
         AssertBody(handler, HttpMethod.Post, $"/api/v1/game-sessions/{sessionId:D}/players/{playerId:D}/cashouts", "{\"confirmAllAvailable\":true,\"confirmNetZero\":true,\"expectedGross\":0,\"expectedFee\":0,\"expectedNet\":0}");
         Assert.Equal(playerId, adjustedPlayer.MembershipId);
@@ -85,9 +81,9 @@ public sealed class ApiProtocolTests
         var pairingId = ProtocolHandler.PairingId;
         var character = new CharacterIdentityDto("Exact Dealer", "Ragnarok", "Ragnarok", true);
         var dropbox = new DropboxCapabilitiesDto(false, null, null, [], false, null);
-        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.2", "1.1.0", dropbox));
+        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.3", "1.1.0", dropbox));
         await api.SendHeartbeatAsync(new PluginHeartbeatRequest(
-            pairingId, Guid.NewGuid(), character, "1.1.2", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
+            pairingId, Guid.NewGuid(), character, "1.1.3", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
         await api.ReportDropboxStatusAsync(new DropboxStatusDto(false, false, false, null, "unavailable", DateTimeOffset.UtcNow));
         await api.GetSessionsAsync();
         await api.GetActiveSessionAsync();

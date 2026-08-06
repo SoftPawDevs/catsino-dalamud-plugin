@@ -128,7 +128,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         try
         {
             if (active is not null || backendOperation.State is
-                (PayoutOperationState.Completed or PayoutOperationState.Cancelled or PayoutOperationState.Failed or PayoutOperationState.ReconciliationRequired))
+                (PayoutOperationState.Completed or PayoutOperationState.Cancelled or PayoutOperationState.Failed))
             {
                 return false;
             }
@@ -360,7 +360,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
     private void UpdateOperation(PayoutLegDto leg, DropboxTradeEvent tradeEvent)
     {
         var state = tradeEvent.IsAmbiguous
-            ? PayoutOperationState.ReconciliationRequired
+            ? PayoutOperationState.Failed
             : tradeEvent.EventType switch
             {
                 DropboxTradeEventType.PlayerDetected => PayoutOperationState.WaitingForPlayer,
@@ -372,8 +372,8 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
                 _ => throw new ArgumentOutOfRangeException(nameof(tradeEvent)),
             };
         ActiveOperation = ToOperation(leg, state, tradeEvent.ErrorCode, tradeEvent.ErrorMessage);
-        reportStatus(state == PayoutOperationState.ReconciliationRequired
-            ? "Payout outcome is ambiguous. Backend reconciliation is required; it will not be retried."
+        reportStatus(state == PayoutOperationState.Failed && tradeEvent.IsAmbiguous
+            ? "Payout outcome was ambiguous and was treated as failed. The remaining unpaid amount can be cashed out again."
             : $"Payout state: {state}.");
     }
 

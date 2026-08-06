@@ -83,11 +83,6 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         hub.RefreshDealerSessions += () => RunBackground(RefreshSessionsAsync);
         hub.QueuePayoutLeg += leg => RunBackground(token => payoutCoordinator.StartBackendLegAsync(leg, token));
         hub.CancelPayoutOperation += request => RunBackground(token => payoutCoordinator.CancelFromBackendAsync(request, token));
-        hub.RequestPayoutReconciliation += request =>
-        {
-            LastReconciliationRequest = request;
-            SetStatus("The backend requested dealer payout reconciliation.");
-        };
         hub.SessionClosed += _ => RunBackground(RefreshSessionsAsync);
         hub.DealerAuthorizationRevoked += reason => RunBackground(token => RevokeAuthorizationAsync(reason, token));
         hub.ReconnectRequired += reason => RunBackground(token => ReconnectHubAsync(reason, token));
@@ -118,8 +113,6 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     public IReadOnlyList<PayoutOperationDto> OpenPayoutOperations { get; private set; } = [];
 
     public PayoutOperationDto? ActivePayout => payoutCoordinator.ActiveOperation;
-
-    public ReconciliationRequestDto? LastReconciliationRequest { get; private set; }
 
     public SessionActionDraftStore ActionDrafts { get; } = new();
 
@@ -600,41 +593,6 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         return removal;
     }
 
-    public async Task RequestCashoutRetryAsync(Guid operationId, CancellationToken cancellationToken = default)
-    {
-        var operation = ActivePayout is { } active && active.OperationId == operationId
-            ? active
-            : OpenPayoutOperations.FirstOrDefault(item => item.OperationId == operationId)
-            ?? throw new InvalidOperationException("The payout operation is not open.");
-        if (operation.State != PayoutOperationState.Failed)
-        {
-            throw new InvalidOperationException("Only a definite failed operation can be sent for dealer-triggered backend retry.");
-        }
-
-        var logicalOperation = $"cashout:{operationId:D}:retry";
-        var key = financialKeys.GetOrCreate(logicalOperation);
-        await api.RetryCashoutAsync(new RetryCashoutRequest(operationId, "dealerTriggered"), key, cancellationToken).ConfigureAwait(false);
-        financialKeys.Complete(logicalOperation, key);
-        SetStatus("Backend payout retry requested. The plugin did not retry the trade directly.");
-        await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task SubmitReconciliationAsync(Guid operationId, string evidence, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(evidence))
-        {
-            throw new InvalidOperationException("Enter dealer evidence for reconciliation.");
-        }
-
-        var normalizedEvidence = evidence.Trim();
-        var logicalOperation = $"cashout:{operationId:D}:reconciliation:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalizedEvidence)))}";
-        var key = financialKeys.GetOrCreate(logicalOperation);
-        await api.ReconcileCashoutAsync(new ReconcileCashoutRequest(operationId, normalizedEvidence), key, cancellationToken).ConfigureAwait(false);
-        financialKeys.Complete(logicalOperation, key);
-        SetStatus("Payout evidence submitted to backend reconciliation.");
-        await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (disposed)
@@ -943,7 +901,6 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             Sessions = [];
             SelectedSession = null;
             OpenPayoutOperations = [];
-            LastReconciliationRequest = null;
             rosterStore.Clear();
             RemoveResolvedSubmissions();
             ActionDrafts.Clear();

@@ -9,7 +9,6 @@ public enum PayoutOperationState
     Completed,
     Cancelled,
     Failed,
-    ReconciliationRequired,
 }
 
 public enum PayoutEventType
@@ -61,14 +60,9 @@ public sealed record PayoutEventDto(
     bool IsAmbiguous);
 
 public sealed record PayoutEventAckDto(Guid OperationId, long SequenceNumber, DateTimeOffset AcknowledgedAt);
-
 public sealed record RetryCashoutRequest(Guid OperationId, string Reason);
 
-public sealed record ReconcileCashoutRequest(Guid OperationId, string DealerEvidence);
-
 public sealed record CancelPayoutOperationDto(Guid OperationId, string Reason);
-
-public sealed record ReconciliationRequestDto(Guid OperationId, string Reason);
 
 public sealed record CashOutLegPreview(int Number, long Gross, long Fee, long Net);
 

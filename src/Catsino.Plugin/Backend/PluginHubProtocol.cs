@@ -6,7 +6,6 @@ public static class PluginHubProtocol
     public const string RefreshDealerSessions = "RefreshDealerSessions";
     public const string QueuePayoutLeg = "QueuePayoutLeg";
     public const string CancelPayoutOperation = "CancelPayoutOperation";
-    public const string RequestPayoutReconciliation = "RequestPayoutReconciliation";
     public const string SessionClosed = "SessionClosed";
     public const string DealerAuthorizationRevoked = "DealerAuthorizationRevoked";
     public const string ReconnectRequired = "ReconnectRequired";
@@ -20,7 +19,6 @@ public static class PluginHubProtocol
         RefreshDealerSessions,
         QueuePayoutLeg,
         CancelPayoutOperation,
-        RequestPayoutReconciliation,
         SessionClosed,
         DealerAuthorizationRevoked,
         ReconnectRequired,

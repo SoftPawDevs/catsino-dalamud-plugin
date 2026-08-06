@@ -32,6 +32,7 @@
 - Idempotency keys must stay stable for financial actions.
 - Exact protocol versioning matters more than guess-based compatibility.
 - Dropbox trade events are ignored unless operation id, plugin instance, exact player identity, and amount all match the active leg.
+- There is no reconciliation workflow. Failed or ambiguous unpaid legs fall back to a normal failed payout path, and the dealer retries by starting a fresh cash out for the returned available amount.
 
 ## Where To Validate Changes
 
