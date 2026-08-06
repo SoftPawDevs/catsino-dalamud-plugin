@@ -345,10 +345,6 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TextUnformatted($"Fee percent: {cashOut.Preview.FeePercent.ToString(CultureInfo.InvariantCulture)}%");
         ImGui.TextUnformatted($"Fee: {cashOut.Preview.Fee:N0} gil");
         ImGui.TextUnformatted($"Net: {cashOut.Preview.Net:N0} gil");
-        foreach (var leg in cashOut.Preview.Legs)
-        {
-            ImGui.TextDisabled($"Leg {leg.Number}: {leg.Gross:N0} gross, {leg.Fee:N0} fee, {leg.Net:N0} net");
-        }
 
         if (!string.IsNullOrWhiteSpace(cashOut.ErrorMessage))
         {

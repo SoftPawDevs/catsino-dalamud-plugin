@@ -81,9 +81,9 @@ public sealed class ApiProtocolTests
         var pairingId = ProtocolHandler.PairingId;
         var character = new CharacterIdentityDto("Exact Dealer", "Ragnarok", "Ragnarok", true);
         var dropbox = new DropboxCapabilitiesDto(false, null, null, [], false, null);
-        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.3", "1.1.0", dropbox));
+        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.4", "1.1.0", dropbox));
         await api.SendHeartbeatAsync(new PluginHeartbeatRequest(
-            pairingId, Guid.NewGuid(), character, "1.1.3", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
+            pairingId, Guid.NewGuid(), character, "1.1.4", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
         await api.ReportDropboxStatusAsync(new DropboxStatusDto(false, false, false, null, "unavailable", DateTimeOffset.UtcNow));
         await api.GetSessionsAsync();
         await api.GetActiveSessionAsync();

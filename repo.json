@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed Dropbox payouts.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.1.3.0",
+    "AssemblyVersion": "1.1.4.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.3/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.3/Catsino.Plugin.zip?download=1",
-    "Changelog": "Remove payout reconciliation, auto-return unpaid remaining amounts to available balance, and keep dealer retry flow on fresh cash outs.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.4/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.4/Catsino.Plugin.zip?download=1",
+    "Changelog": "Hide payout leg rows from the cash-out confirmation UI while keeping the existing dealer-side payout automation.",
     "Tags": ["dealer", "games"]
   }
 ]
