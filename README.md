@@ -7,7 +7,7 @@ The client contains no database access, server secrets, authoritative balances, 
 ## Projects
 
 - `src/Catsino.Plugin`: Dalamud API 15 plugin targeting `net10.0-windows`.
-- `src/Catsino.Plugin.Contracts`: portable public backend contract v1.1.0.
+- `src/Catsino.Plugin.Contracts`: portable public backend contract v1.2.0.
 - `tests/Catsino.Plugin.Tests`: client, policy, payout executor, redaction, idempotency, and durable outbox tests.
 
 ## Commands

@@ -5,7 +5,7 @@ namespace Catsino.Plugin.Contracts;
 
 public static class ContractVersion
 {
-    public const string Current = "1.1.0";
+    public const string Current = "1.2.0";
 }
 
 public static class ContractJson

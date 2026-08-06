@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.2.0",
   "serialization": {
     "propertyNames": "camelCase",
     "enums": "camelCaseStrings",
@@ -60,13 +60,13 @@
   "dtoExamples": {
     "CharacterIdentityDto": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true },
     "PayoutExecutorStatusDto": { "executorInstanceId": "32000000-0000-0000-0000-000000000003", "isReady": true, "hasActiveOperation": false, "activeOperationId": null, "status": "ready", "observedAt": "2026-08-05T12:00:00+00:00" },
-    "AuthorizeDealerRequest": { "activationJwt": "redacted.jwt.value", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.1.4", "contractVersion": "1.1.0" },
-    "RefreshDealerRequest": { "refreshCredential": "redacted-refresh-credential", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.1.4", "contractVersion": "1.1.0" },
+    "AuthorizeDealerRequest": { "activationJwt": "redacted.jwt.value", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.2.0", "contractVersion": "1.2.0" },
+    "RefreshDealerRequest": { "refreshCredential": "redacted-refresh-credential", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.2.0", "contractVersion": "1.2.0" },
     "DealerAuthorizationDto": { "pairingId": "00000000-0000-0000-0000-000000000002", "dealerId": "00000000-0000-0000-0000-000000000003", "accessToken": "redacted-access-token", "refreshCredential": "redacted-refresh-credential", "accessTokenExpiresAt": "2026-08-05T13:00:00+00:00", "authorizedAt": "2026-08-05T12:00:00+00:00" },
     "dealerDisconnect": { "pairingId": "00000000-0000-0000-0000-000000000002" },
-    "PluginPairingRequest": { "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.1.4", "contractVersion": "1.1.0" },
+    "PluginPairingRequest": { "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.2.0", "contractVersion": "1.2.0" },
     "PluginPairingDto": { "pairingId": "00000000-0000-0000-0000-000000000002", "pairedAt": "2026-08-05T12:00:00+00:00", "lastHeartbeatAt": "2026-08-05T12:00:00+00:00" },
-    "PluginHeartbeatRequest": { "pairingId": "00000000-0000-0000-0000-000000000002", "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.1.4", "contractVersion": "1.1.0", "pendingOutboxEvents": 0, "sentAt": "2026-08-05T12:00:00+00:00" },
+    "PluginHeartbeatRequest": { "pairingId": "00000000-0000-0000-0000-000000000002", "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.2.0", "contractVersion": "1.2.0", "pendingOutboxEvents": 0, "sentAt": "2026-08-05T12:00:00+00:00" },
     "ApiErrorDto": { "code": "validationError", "message": "Request validation failed.", "validationErrors": { "feePercent": ["Must be between 0 and 100."] }, "traceId": "00000000-0000-0000-0000-000000000004" },
     "GameSessionDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "gameType": "plinko", "feePercent": 0.0, "state": "closing", "playerCount": 1, "totalDepositedGil": 1000, "payoutState": "pending", "reconciliationState": "clear", "createdAt": "2026-08-05T12:00:00+00:00", "openedAt": "2026-08-05T12:05:00+00:00", "closedAt": null },
     "CreateGameSessionRequest": { "gameType": "plinko", "feePercent": 0.0 },

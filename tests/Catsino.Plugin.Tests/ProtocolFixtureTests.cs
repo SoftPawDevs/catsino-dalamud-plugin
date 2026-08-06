@@ -11,7 +11,7 @@ public sealed class ProtocolFixtureTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "backend-v1.fixture.json")));
         var root = document.RootElement;
-        Assert.Equal("1.1.0", root.GetProperty("contractVersion").GetString());
+        Assert.Equal("1.2.0", root.GetProperty("contractVersion").GetString());
         var routes = root.GetProperty("routes").EnumerateArray().ToArray();
         Assert.Equal(27, routes.Length);
 

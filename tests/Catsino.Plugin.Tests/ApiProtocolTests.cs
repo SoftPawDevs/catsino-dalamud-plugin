@@ -80,9 +80,9 @@ public sealed class ApiProtocolTests
         await api.AuthorizeAsync("eyJactivation.payload.signature");
         var pairingId = ProtocolHandler.PairingId;
         var character = new CharacterIdentityDto("Exact Dealer", "Ragnarok", "Ragnarok", true);
-        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.4", "1.1.0"));
+        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.2.0", "1.2.0"));
         await api.SendHeartbeatAsync(new PluginHeartbeatRequest(
-            pairingId, Guid.NewGuid(), character, "1.1.4", "1.1.0", 0, DateTimeOffset.UtcNow));
+            pairingId, Guid.NewGuid(), character, "1.2.0", "1.2.0", 0, DateTimeOffset.UtcNow));
         await api.ReportPayoutExecutorStatusAsync(new PayoutExecutorStatusDto(Guid.NewGuid(), true, false, null, "ready", DateTimeOffset.UtcNow));
         await api.GetSessionsAsync();
         await api.GetActiveSessionAsync();
