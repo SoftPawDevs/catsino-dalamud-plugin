@@ -484,16 +484,23 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
 
     private void TryConfirmTrade(AtkUnitBase* tradeAddon, TradeStateSnapshot state)
     {
-        if (!PayoutTradeUiAccessor.TryGetLockState(tradeAddon, out var tradeButton, out var partnerLocked))
+        if (!PayoutTradeUiAccessor.TryGetLockState(tradeAddon, out var tradeButton, out _))
         {
             return;
         }
 
-        if (tradeButton->IsEnabled && state.ExactPartnerVerified && state.ExactAmountSubmitted && DateTimeOffset.UtcNow >= nextActionAt)
+        // Keep retrying the lock-in click while the trade is open and the exact payout amount is
+        // already present. Final confirmation is a strictly later phase and must not start until
+        // both sides are observed as locked.
+        if (!tradeLocked)
         {
-            PayoutTradeUiAccessor.ClickButton(tradeButton, tradeAddon);
-            confirmationAccepted = true;
-            nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
+            if (tradeButton->IsEnabled && state.ExactPartnerVerified && state.ExactAmountSubmitted && DateTimeOffset.UtcNow >= nextActionAt)
+            {
+                PayoutTradeUiAccessor.ClickButton(tradeButton, tradeAddon);
+                nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
+            }
+
+            return;
         }
 
         if (!condition[ConditionFlag.TradeOpen] || DateTimeOffset.UtcNow < nextActionAt)
@@ -501,6 +508,8 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             return;
         }
 
+        // Once both sides are locked, keep retrying the final confirm while the window remains
+        // open. ConfirmationAccepted is only set after the yes button is actually pressed.
         if (!TryFindSelectYesNo(out var prompt))
         {
             return;

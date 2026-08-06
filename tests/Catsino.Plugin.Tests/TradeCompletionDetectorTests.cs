@@ -29,6 +29,27 @@ public sealed class TradeCompletionDetectorTests
     }
 
     [Fact]
+    public void CleanCancelWhenBothSidesLockedButFinalConfirmationNeverHappened()
+    {
+        var detector = new TradeCompletionDetector(ExpectedAmount);
+        Assert.Equal(TradeObservationResult.InProgress, detector.Observe(new TradeStateSnapshot(
+            TradeConditionOpen: true,
+            TradeAddonReady: true,
+            ExactPartnerVerified: true,
+            ExactAmountSubmitted: true,
+            LocalTradeLocked: true,
+            PartnerTradeLocked: true,
+            ConfirmationAccepted: false,
+            GilBefore: GilBefore,
+            GilCurrent: GilBefore,
+            DefiniteCancellation: false,
+            DefiniteFailure: false)));
+
+        var closed = Closed(GilBefore, confirmed: false);
+        Assert.Equal(TradeObservationResult.Cancelled, detector.Observe(closed));
+    }
+
+    [Fact]
     public void ReconciliationWhenConfirmedButGilDidNotDebitExactly()
     {
         var detector = new TradeCompletionDetector(ExpectedAmount);
