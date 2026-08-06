@@ -25,7 +25,7 @@ public sealed class ApiProtocolTests
         await api.UpdateSessionFeeAsync(sessionId, new UpdateSessionFeeRequest(5m), keys[1]);
         await api.OpenSessionAsync(sessionId, keys[2]);
         await api.CloseSessionAsync(sessionId, keys[3]);
-        await api.CreateInviteAsync(sessionId, new CreateInviteRequest("Exact Player", "Ragnarok"));
+        await api.CreateInviteAsync(sessionId, new CreateInviteRequest("Exact Player", "Ragnarok", 500));
         await api.CreateDepositAsync(sessionId, new CreateManualDepositRequest(playerId, 100), keys[4]);
         var adjustedPlayer = await api.AdjustPlayerBalanceAsync(sessionId, playerId, new AdjustPlayerBalanceRequest(-100), keys[5]);
         var zeroTokenCashOut = await api.StartPlayerCashOutAsync(sessionId, playerId, new DealerCashOutRequest(true, true, 0, 0, 0), keys[6]);
@@ -85,9 +85,9 @@ public sealed class ApiProtocolTests
         var pairingId = ProtocolHandler.PairingId;
         var character = new CharacterIdentityDto("Exact Dealer", "Ragnarok", "Ragnarok", true);
         var dropbox = new DropboxCapabilitiesDto(false, null, null, [], false, null);
-        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.1", "1.1.0", dropbox));
+        await api.CreatePairingAsync(new PluginPairingRequest(Guid.NewGuid(), character, "1.1.2", "1.1.0", dropbox));
         await api.SendHeartbeatAsync(new PluginHeartbeatRequest(
-            pairingId, Guid.NewGuid(), character, "1.1.1", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
+            pairingId, Guid.NewGuid(), character, "1.1.2", "1.1.0", dropbox, 0, DateTimeOffset.UtcNow));
         await api.ReportDropboxStatusAsync(new DropboxStatusDto(false, false, false, null, "unavailable", DateTimeOffset.UtcNow));
         await api.GetSessionsAsync();
         await api.GetActiveSessionAsync();
@@ -260,7 +260,7 @@ public sealed class ApiProtocolTests
                 (_, var value) when value.EndsWith("/open", StringComparison.Ordinal) => Session(GameSessionState.Open),
                 (_, var value) when value.EndsWith("/close", StringComparison.Ordinal) => Session(GameSessionState.Closing),
                 ("POST", var value) when value.EndsWith("/invites", StringComparison.Ordinal) => new InviteDto(
-                    InviteId, SessionId, "Exact Player", "Ragnarok", new Uri("https://localhost/invite"), DateTimeOffset.UtcNow.AddMinutes(5)),
+                    InviteId, SessionId, "Exact Player", "Ragnarok", 500, new Uri("https://localhost/invite"), DateTimeOffset.UtcNow.AddMinutes(5)),
                 (_, var value) when value.EndsWith("/deposits", StringComparison.Ordinal) => new DepositDto(
                     Guid.NewGuid(), SessionId, PlayerId, 100, idempotencyKey!.Value, DateTimeOffset.UtcNow),
                 ("POST", var value) when value.EndsWith("/balance-adjustments", StringComparison.Ordinal) => Roster().Players[0],
@@ -306,7 +306,7 @@ public sealed class ApiProtocolTests
             return new SessionRosterDto(
                 SessionId,
                 [new SessionRosterPlayerDto(PlayerId, SessionId, "Exact Player", "Ragnarok", 100, 20, 120, 0, false, "none", "clear", now)],
-                [new PendingInviteDto(InviteId, SessionId, "Other Player", "Phoenix", now, now.AddMinutes(2))],
+                [new PendingInviteDto(InviteId, SessionId, "Other Player", "Phoenix", 500, now, now.AddMinutes(2))],
                 now);
         }
 

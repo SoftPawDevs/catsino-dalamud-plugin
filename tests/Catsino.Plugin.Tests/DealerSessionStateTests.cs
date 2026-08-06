@@ -105,7 +105,7 @@ public sealed class DealerSessionStateTests
     public void InviteCountdownHidesExpiredInvitesAndUsesServerExpiry()
     {
         var now = new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
-        var invite = new PendingInviteDto(Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", now, now.AddSeconds(120));
+        var invite = new PendingInviteDto(Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 500, now, now.AddSeconds(120));
 
         Assert.True(InviteCountdown.IsVisible(invite, now));
         Assert.Equal("2:00", InviteCountdown.Format(invite.ExpiresAt, now));
@@ -119,7 +119,7 @@ public sealed class DealerSessionStateTests
         var store = new SessionRosterStore();
         var now = DateTimeOffset.UtcNow;
         var invite = new PendingInviteDto(
-            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", now, now.AddMinutes(2));
+            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 500, now, now.AddMinutes(2));
 
         store.UpsertPendingInvite(invite);
 
@@ -181,6 +181,27 @@ public sealed class DealerSessionStateTests
         cashOut.MarkSending();
         cashOut.MarkFailed("connection lost");
         Assert.False(cashOut.CanDiscardFailure);
+    }
+
+    [Fact]
+    public void InviteConflictRejectsActivePlayerAndPendingInvite()
+    {
+        var sessionId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var withPlayer = new SessionRosterDto(
+            sessionId,
+            [new SessionRosterPlayerDto(Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 100, 0, 100, 0, false, "none", "clear", now)],
+            [],
+            now);
+        var withPendingInvite = new SessionRosterDto(
+            sessionId,
+            [],
+            [new PendingInviteDto(Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 500, now, now.AddMinutes(2))],
+            now);
+
+        Assert.Equal("This character is already active in the session.", SessionRosterStore.FindInviteConflict(withPlayer, "Exact Player", "Ragnarok"));
+        Assert.Equal("A pending invite already exists for this character.", SessionRosterStore.FindInviteConflict(withPendingInvite, "Exact Player", "Ragnarok"));
+        Assert.Null(SessionRosterStore.FindInviteConflict(withPendingInvite, "Different Player", "Phoenix"));
     }
 
     private static SessionRosterDto Roster(Guid sessionId, string playerName, DateTimeOffset observedAt) => new(

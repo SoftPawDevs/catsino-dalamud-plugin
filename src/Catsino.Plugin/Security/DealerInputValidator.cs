@@ -51,6 +51,9 @@ public static partial class DealerInputValidator
     public static string? ValidateBalanceAdjustment(long amountGil) =>
         amountGil is 0 or long.MinValue ? "Balance adjustment must be non-zero and representable." : null;
 
+    public static string? ValidateInviteBalance(long amountGil) =>
+        amountGil < 0 ? "Invite balance must be zero or a positive whole gil amount." : null;
+
     public static bool TryParseFee(string text, out decimal fee) =>
         decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out fee);
 

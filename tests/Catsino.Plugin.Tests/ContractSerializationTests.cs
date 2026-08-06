@@ -10,7 +10,7 @@ public sealed class ContractSerializationTests
     public void VersionIsStable()
     {
         Assert.Equal("1.1.0", ContractVersion.Current);
-        Assert.Equal("1.1.1", PluginVersion.Current);
+        Assert.Equal("1.1.2", PluginVersion.Current);
     }
 
     [Fact]
@@ -78,14 +78,14 @@ public sealed class ContractSerializationTests
             Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 1_000, -250, 750, 50,
             true, "queued", "clear", now);
         var invite = new PendingInviteDto(
-            Guid.NewGuid(), sessionId, "Other Player", "Phoenix", now, now.AddMinutes(2));
+            Guid.NewGuid(), sessionId, "Other Player", "Phoenix", 500, now, now.AddMinutes(2));
         var roster = new SessionRosterDto(sessionId, [player], [invite], now);
 
         Assert.Equal(
             ["membershipId", "sessionId", "characterName", "homeWorld", "balanceGil", "netGil", "tokens", "reservedTokens", "bettingLocked", "payoutState", "reconciliationState", "joinedAt"],
             PropertyNames(player));
         Assert.Equal(
-            ["inviteId", "sessionId", "characterName", "homeWorld", "createdAt", "expiresAt"],
+            ["inviteId", "sessionId", "characterName", "homeWorld", "initialBalanceGil", "createdAt", "expiresAt"],
             PropertyNames(invite));
         Assert.Equal(["sessionId", "players", "pendingInvites", "observedAt"], PropertyNames(roster));
         var roundTrip = JsonSerializer.Deserialize<SessionRosterDto>(
@@ -106,6 +106,9 @@ public sealed class ContractSerializationTests
         Assert.Equal(
             ["sessionId", "mode"],
             PropertyNames(new SessionRemovalDto(Guid.NewGuid(), "archived")));
+        Assert.Equal(
+            "{\"characterName\":\"Exact Player\",\"homeWorld\":\"Ragnarok\",\"initialBalanceGil\":500}",
+            JsonSerializer.Serialize(new CreateInviteRequest("Exact Player", "Ragnarok", 500), ContractJson.Options));
     }
 
     private static string[] PropertyNames<T>(T value) =>

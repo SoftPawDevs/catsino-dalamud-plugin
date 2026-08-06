@@ -92,45 +92,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
 
     private void DrawSessionControls(GameSessionDto session, PanelState state)
     {
-        var feeLocked = session.State != GameSessionState.Created;
-        BeginDisabled(feeLocked || state.Busy);
-        ImGui.SetNextItemWidth(100);
-        ImGui.InputText("Fee %", ref state.EditFee, 16, ImGuiInputTextFlags.CharsDecimal);
-        ImGui.SameLine();
-        if (ImGui.Button("Update fee"))
-        {
-            if (DealerInputValidator.TryParseFee(state.EditFee, out var fee) &&
-                DealerInputValidator.ValidateFee(fee, GameSessionState.Created) is null)
-            {
-                RunSession(state, () => runtime.UpdateFeeAsync(session.SessionId, fee));
-            }
-            else
-            {
-                state.ValidationMessage = "Fee must be between 0 and 100 with at most two decimal places.";
-            }
-        }
-
-        EndDisabled(feeLocked || state.Busy);
-        if (feeLocked)
-        {
-            ImGui.TextDisabled("Fee is locked after Created.");
-        }
-
-        BeginDisabled(state.Busy || session.State != GameSessionState.Created);
-        if (ImGui.Button("Open session"))
-        {
-            RunSession(state, () => runtime.OpenSessionAsync(session.SessionId));
-        }
-
-        EndDisabled(state.Busy || session.State != GameSessionState.Created);
-        ImGui.SameLine();
-        BeginDisabled(state.Busy || session.State != GameSessionState.Open);
-        if (ImGui.Button("Close session"))
-        {
-            RunSession(state, () => runtime.CloseSessionAsync(session.SessionId));
-        }
-
-        EndDisabled(state.Busy || session.State != GameSessionState.Open);
+        ImGui.TextDisabled($"Dealer fee fixed at creation: {session.FeePercent.ToString("0.00", CultureInfo.InvariantCulture)}%");
     }
 
     private void DrawRosterTable(GameSessionDto session, SessionRosterDto roster, PanelState state)
@@ -138,12 +100,13 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.Spacing();
         const ImGuiTableFlags flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg |
                                       ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp;
-        if (!ImGui.BeginTable("DealerSessionRoster", 5, flags))
+        if (!ImGui.BeginTable("DealerSessionRoster", 6, flags))
         {
             return;
         }
 
         ImGui.TableSetupColumn("Player", ImGuiTableColumnFlags.WidthStretch, 2f);
+        ImGui.TableSetupColumn("Home World", ImGuiTableColumnFlags.WidthStretch, 1.2f);
         ImGui.TableSetupColumn("Balance", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("NET", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Tokens", ImGuiTableColumnFlags.WidthStretch, 1f);
@@ -161,7 +124,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
             DrawPendingInviteRow(invite, now, state);
         }
 
-        DrawInvitationInputRow(session, state);
+        DrawInvitationInputRow(session, roster, state);
         ImGui.EndTable();
     }
 
@@ -178,10 +141,12 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.PushID(player.MembershipId.ToString("D"));
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
-        ImGui.TextUnformatted($"{player.CharacterName}@{player.HomeWorld}");
+        ImGui.TextUnformatted(player.CharacterName);
         ImGui.TextDisabled($"Payout: {player.PayoutState} | Reconciliation: {player.ReconciliationState}");
         ShowTooltip($"Reserved tokens: {player.ReservedTokens:N0}\nBetting locked: {player.BettingLocked}\nJoined: {player.JoinedAt:u}");
 
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted(player.HomeWorld);
         ImGui.TableNextColumn();
         ImGui.TextUnformatted($"{player.BalanceGil:N0} gil");
         ImGui.TableNextColumn();
@@ -237,12 +202,14 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.PushID(invite.InviteId.ToString("D"));
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
-        ImGui.TextUnformatted($"{invite.CharacterName}@{invite.HomeWorld}");
+        ImGui.TextUnformatted(invite.CharacterName);
         ImGui.TextDisabled("Pending invite");
         ImGui.TableNextColumn();
-        ImGui.TextDisabled("Pending");
+        ImGui.TextUnformatted(invite.HomeWorld);
         ImGui.TableNextColumn();
-        ImGui.TextDisabled("-");
+        ImGui.TextUnformatted($"{invite.InitialBalanceGil:N0} gil");
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled("Pending");
         ImGui.TableNextColumn();
         ImGui.TextUnformatted($"Expires in {InviteCountdown.Format(invite.ExpiresAt, now)}");
         ImGui.TableNextColumn();
@@ -256,7 +223,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.PopID();
     }
 
-    private void DrawInvitationInputRow(GameSessionDto session, PanelState state)
+    private void DrawInvitationInputRow(GameSessionDto session, SessionRosterDto roster, PanelState state)
     {
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
@@ -268,9 +235,13 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.SetNextItemWidth(-1);
         ImGui.InputText("##inviteHomeWorld", ref state.InviteWorld, 32);
         ImGui.TableNextColumn();
+        ImGui.TextDisabled("Balance");
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputText("##inviteBalance", ref state.InviteBalance, 20, ImGuiInputTextFlags.CharsDecimal);
+        ImGui.TableNextColumn();
         ImGui.TextDisabled("-");
         ImGui.TableNextColumn();
-        ImGui.TextDisabled("Invite");
+        ImGui.TextDisabled("New player");
         ImGui.TableNextColumn();
         BeginDisabled(state.Busy || session.State == GameSessionState.Closed);
         if (ImGui.Button("+##invite"))
@@ -282,15 +253,28 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
             {
                 state.ValidationMessage = error;
             }
+            else if (!DealerInputValidator.TryParseGil(state.InviteBalance.Trim(), out var balance))
+            {
+                state.ValidationMessage = "Invite balance must be zero or a positive whole gil amount.";
+            }
+            else if ((error = DealerInputValidator.ValidateInviteBalance(balance)) is not null)
+            {
+                state.ValidationMessage = error;
+            }
+            else if ((error = SessionRosterStore.FindInviteConflict(roster, name, world)) is not null)
+            {
+                state.ValidationMessage = error;
+            }
             else
             {
                 RunSession(
                     state,
-                    () => runtime.CreateInviteAndTellAsync(session.SessionId, name, world),
+                    () => runtime.CreateInviteAndTellAsync(session.SessionId, name, world, balance),
                     () =>
                     {
                         state.InviteName = string.Empty;
                         state.InviteWorld = string.Empty;
+                        state.InviteBalance = "0";
                     });
             }
         }
@@ -409,10 +393,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
     {
         if (!states.TryGetValue(session.SessionId, out var state))
         {
-            state = new PanelState
-            {
-                EditFee = session.FeePercent.ToString(CultureInfo.InvariantCulture),
-            };
+            state = new PanelState();
             states.Add(session.SessionId, state);
         }
 
@@ -515,9 +496,9 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
 
     private sealed class PanelState
     {
-        internal string EditFee = string.Empty;
         internal string InviteName = string.Empty;
         internal string InviteWorld = string.Empty;
+        internal string InviteBalance = "0";
         internal string ValidationMessage = string.Empty;
         internal bool Busy;
         internal bool RosterRequested;

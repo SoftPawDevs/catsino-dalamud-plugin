@@ -44,13 +44,14 @@ public sealed record SessionPlayerDto(
     string ReconciliationState,
     DateTimeOffset JoinedAt);
 
-public sealed record CreateInviteRequest(string CharacterName, string HomeWorld);
+public sealed record CreateInviteRequest(string CharacterName, string HomeWorld, long InitialBalanceGil);
 
 public sealed record InviteDto(
     Guid InviteId,
     Guid SessionId,
     string CharacterName,
     string HomeWorld,
+    long InitialBalanceGil,
     Uri InviteUrl,
     DateTimeOffset ExpiresAt);
 
@@ -73,6 +74,7 @@ public sealed record PendingInviteDto(
     Guid SessionId,
     string CharacterName,
     string HomeWorld,
+    long InitialBalanceGil,
     DateTimeOffset CreatedAt,
     DateTimeOffset ExpiresAt);
 

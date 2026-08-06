@@ -22,6 +22,9 @@
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`
 - `src/Catsino.Plugin/Backend/CatsinoApiClient.cs`
 
+Notes:
+Invite creation now depends on exact `Character Name`, exact `Home World`, and an explicit starting balance. The plugin UI and runtime both reject duplicate invites when the roster already shows the player as active or pending.
+
 ## Deposits And Dealer Financial Actions
 
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`

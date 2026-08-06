@@ -136,6 +136,25 @@ public sealed class SessionRosterStore
         }
     }
 
+    public static string? FindInviteConflict(SessionRosterDto roster, string characterName, string homeWorld)
+    {
+        if (roster.Players.Any(player =>
+                string.Equals(player.CharacterName, characterName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(player.HomeWorld, homeWorld, StringComparison.OrdinalIgnoreCase)))
+        {
+            return "This character is already active in the session.";
+        }
+
+        if (roster.PendingInvites.Any(invite =>
+                string.Equals(invite.CharacterName, characterName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(invite.HomeWorld, homeWorld, StringComparison.OrdinalIgnoreCase)))
+        {
+            return "A pending invite already exists for this character.";
+        }
+
+        return null;
+    }
+
     public void Remove(Guid sessionId)
     {
         lock (sync)

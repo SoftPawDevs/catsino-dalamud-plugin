@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed Dropbox payouts.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.1.1.0",
+    "AssemblyVersion": "1.1.2.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.1/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.1/Catsino.Plugin.zip?download=1",
-    "Changelog": "Fix invite redemption navigation, persist the default dealer fee, tighten payout identity checks, and add cash-out safety coverage.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.2/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.1.2/Catsino.Plugin.zip?download=1",
+    "Changelog": "Add invite starting balances, duplicate-invite guardrails, fixed-at-create session fees, and refreshed roster layout for dealer workflows.",
     "Tags": ["dealer", "games"]
   }
 ]

@@ -400,6 +400,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         Guid sessionId,
         string characterName,
         string homeWorld,
+        long initialBalanceGil,
         CancellationToken cancellationToken = default)
     {
         _ = GetSession(sessionId) ?? throw new InvalidOperationException("The session is not available.");
@@ -409,13 +410,29 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             throw new InvalidOperationException(error);
         }
 
+        error = DealerInputValidator.ValidateInviteBalance(initialBalanceGil);
+        if (error is not null)
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        if (GetRoster(sessionId) is null)
+            await RefreshRosterAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        var roster = GetRoster(sessionId) ?? throw new InvalidOperationException("The session roster is not available.");
+        error = SessionRosterStore.FindInviteConflict(roster, characterName, homeWorld);
+        if (error is not null)
+        {
+            throw new InvalidOperationException(error);
+        }
+
         var invite = await api.CreateInviteAsync(
             sessionId,
-            new CreateInviteRequest(characterName, homeWorld),
+            new CreateInviteRequest(characterName, homeWorld, initialBalanceGil),
             cancellationToken).ConfigureAwait(false);
         if (invite.SessionId != sessionId ||
             !string.Equals(invite.CharacterName, characterName, StringComparison.Ordinal) ||
             !string.Equals(invite.HomeWorld, homeWorld, StringComparison.Ordinal) ||
+            invite.InitialBalanceGil != initialBalanceGil ||
             !string.Equals(invite.InviteUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             invite.InviteUrl.OriginalString.Any(char.IsWhiteSpace))
         {
@@ -427,6 +444,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             invite.SessionId,
             invite.CharacterName,
             invite.HomeWorld,
+            invite.InitialBalanceGil,
             DateTimeOffset.UtcNow,
             invite.ExpiresAt));
         nextRosterPoll = DateTimeOffset.MinValue;

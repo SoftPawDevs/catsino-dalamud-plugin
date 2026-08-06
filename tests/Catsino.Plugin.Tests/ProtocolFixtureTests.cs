@@ -63,7 +63,7 @@ public sealed class ProtocolFixtureTests
         AssertDefinitionMatches(root, "SessionRosterPlayerDto", new SessionRosterPlayerDto(
             Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 100, 25, 125, 10, false, "none", "clear", now));
         AssertDefinitionMatches(root, "PendingInviteDto", new PendingInviteDto(
-            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", now, now.AddMinutes(2)));
+            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 100, now, now.AddMinutes(2)));
         AssertDefinitionMatches(root, "SessionRosterDto", new SessionRosterDto(Guid.NewGuid(), [], [], now));
         AssertDefinitionMatches(root, "AdjustPlayerBalanceRequest", new AdjustPlayerBalanceRequest(-100));
         AssertDefinitionMatches(root, "DealerCashOutRequest", new DealerCashOutRequest(true, false, 100, 5, 95));
@@ -90,6 +90,7 @@ public sealed class ProtocolFixtureTests
         Assert.Equal("utcDateTimeOffset", definitions.GetProperty("DepositDto").GetProperty("recordedAt").GetString());
         Assert.Equal("int64", definitions.GetProperty("SessionRosterPlayerDto").GetProperty("netGil").GetString());
         Assert.Equal("int64", definitions.GetProperty("SessionRosterPlayerDto").GetProperty("tokens").GetString());
+        Assert.Equal("int64", definitions.GetProperty("PendingInviteDto").GetProperty("initialBalanceGil").GetString());
         Assert.Equal("int64", definitions.GetProperty("AdjustPlayerBalanceRequest").GetProperty("amountGil").GetString());
 
         Assert.Equal(
