@@ -140,6 +140,58 @@ public sealed class TradeCompletionDetector(long expectedAmount)
     }
 }
 
+public enum TradeConfirmationAction
+{
+    None,
+    Lock,
+    SummonConfirm,
+    ConfirmYes,
+}
+
+// Pure decision helper for the two-phase trade lock / confirm handshake. It keeps all game
+// pointer work in the unsafe executor while the ordering rules stay unit-testable:
+//   Phase A (lock):    keep pressing the trade button until BOTH sides are structurally locked.
+//   Phase B (confirm): only after lock, raise the SelectYesno dialog and accept it, retrying
+//                      every throttle while the window stays open.
+// The final confirmation is never treated as accepted here; the caller only records that after
+// it actually presses the Yes button (ConfirmYes).
+public static class TradeConfirmationPlanner
+{
+    public static TradeConfirmationAction Plan(
+        bool tradeOpen,
+        bool throttleElapsed,
+        bool amountSubmitted,
+        bool exactPartnerVerified,
+        bool exactAmountSubmitted,
+        bool bothSidesLocked,
+        bool lockButtonEnabled,
+        bool selectYesNoReady,
+        bool yesButtonEnabled)
+    {
+        if (!tradeOpen || !throttleElapsed || !amountSubmitted)
+        {
+            return TradeConfirmationAction.None;
+        }
+
+        if (!bothSidesLocked)
+        {
+            // Phase A: retry the lock-in press until both sides are observed locked.
+            return lockButtonEnabled && exactPartnerVerified && exactAmountSubmitted
+                ? TradeConfirmationAction.Lock
+                : TradeConfirmationAction.None;
+        }
+
+        // Phase B: both sides are locked. Accept the confirmation dialog if it is up, otherwise
+        // re-press the trade button to raise it. Neither branch implies confirmation happened.
+        if (selectYesNoReady && yesButtonEnabled)
+        {
+            return TradeConfirmationAction.ConfirmYes;
+        }
+
+        return lockButtonEnabled ? TradeConfirmationAction.SummonConfirm : TradeConfirmationAction.None;
+    }
+}
+
 public enum TradeCloseDecision
 {
     Cancelled,

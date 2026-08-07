@@ -484,42 +484,42 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
 
     private void TryConfirmTrade(AtkUnitBase* tradeAddon, TradeStateSnapshot state)
     {
-        if (!PayoutTradeUiAccessor.TryGetLockState(tradeAddon, out var tradeButton, out _))
-        {
-            return;
-        }
+        // Resolve the trade lock-in button from node 3 only. The stricter partner-ready node
+        // walk (node 31) is unreliable and must never gate the click; both-sides-locked is read
+        // from the structured InventoryManager state (tradeLocked) instead.
+        var hasLockButton = PayoutTradeUiAccessor.TryGetTradeLockButton(tradeAddon, out var tradeButton);
+        var lockButtonEnabled = hasLockButton && tradeButton->IsEnabled;
 
-        // Keep retrying the lock-in click while the trade is open and the exact payout amount is
-        // already present. Final confirmation is a strictly later phase and must not start until
-        // both sides are observed as locked.
-        if (!tradeLocked)
+        var selectYesNoReady = TryFindSelectYesNo(out var prompt);
+        var yesButtonEnabled = selectYesNoReady && prompt->YesButton != null && prompt->YesButton->IsEnabled;
+
+        var action = TradeConfirmationPlanner.Plan(
+            condition[ConditionFlag.TradeOpen],
+            DateTimeOffset.UtcNow >= nextActionAt,
+            amountSubmitted,
+            state.ExactPartnerVerified,
+            state.ExactAmountSubmitted,
+            tradeLocked,
+            lockButtonEnabled,
+            selectYesNoReady,
+            yesButtonEnabled);
+
+        switch (action)
         {
-            if (tradeButton->IsEnabled && state.ExactPartnerVerified && state.ExactAmountSubmitted && DateTimeOffset.UtcNow >= nextActionAt)
-            {
+            case TradeConfirmationAction.Lock:
+            case TradeConfirmationAction.SummonConfirm:
+                // Phase A lock-in, or phase B re-press to raise the confirmation dialog. Pressing
+                // the button is not, by itself, an accepted confirmation.
                 PayoutTradeUiAccessor.ClickButton(tradeButton, tradeAddon);
                 nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
-            }
-
-            return;
-        }
-
-        if (!condition[ConditionFlag.TradeOpen] || DateTimeOffset.UtcNow < nextActionAt)
-        {
-            return;
-        }
-
-        // Once both sides are locked, keep retrying the final confirm while the window remains
-        // open. ConfirmationAccepted is only set after the yes button is actually pressed.
-        if (!TryFindSelectYesNo(out var prompt))
-        {
-            return;
-        }
-
-        if (prompt->YesButton != null && prompt->YesButton->IsEnabled)
-        {
-            PayoutTradeUiAccessor.ClickButton(prompt->YesButton, (AtkUnitBase*)prompt);
-            confirmationAccepted = true;
-            nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
+                break;
+            case TradeConfirmationAction.ConfirmYes:
+                // The final confirmation dialog is up: accept it. Only here is confirmation
+                // considered accepted.
+                PayoutTradeUiAccessor.ClickButton(prompt->YesButton, (AtkUnitBase*)prompt);
+                confirmationAccepted = true;
+                nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
+                break;
         }
     }
 
