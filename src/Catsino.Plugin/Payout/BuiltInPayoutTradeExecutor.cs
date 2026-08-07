@@ -4,59 +4,50 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Plugin.Services;
+using ECommons.Automation;
+using ECommons.Automation.NeoTaskManager;
+using ECommons.Automation.UIInput;
+using ECommons.Throttlers;
+using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
+using static ECommons.GenericHelpers;
 
 namespace Catsino.Plugin.Payout;
 
+// Drives a single outgoing payout trade end-to-end using ECommons' NeoTaskManager and trade
+// primitives: target the exact player → /trade →
+// fill the exact gil → lock → confirm the SelectYesno → wait for the trade to close. Catsino's own
+// guarantees are layered on top: sequence-numbered PayoutTradeEvents are raised for the backend, and
+// the terminal outcome is decided strictly from the exact gil debit (TradeCloseEvaluator), never from
+// the fact that a button was pressed.
 public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
 {
-    private static readonly TimeSpan AmountSubmissionTimeout = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan TradeReadyTimeout = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan ActionThrottle = TimeSpan.FromMilliseconds(300);
-    private static readonly TimeSpan TradeRequestThrottle = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(2);
+    // Generous per-task time limit: normal trades complete in seconds once both sides confirm, and a
+    // never-appearing / never-confirming player eventually aborts to a terminal outcome.
+    private const int TaskTimeLimitMs = 180_000;
 
-    // Upper bound on waiting for the paying-out player to appear and accept the trade before the
-    // window opens. Without this a never-appearing player would keep the payout slot occupied
-    // forever and block every later cash-out. Purely time-based (spec 6.10); tunable (spec 25.5).
-    private static readonly TimeSpan WaitForPlayerTimeout = TimeSpan.FromMinutes(3);
-
-    private readonly IFramework framework;
     private readonly IObjectTable objects;
     private readonly ITargetManager targets;
     private readonly ICondition condition;
     private readonly IGameGui gameGui;
     private readonly IDataManager data;
+    private readonly IFramework framework;
     private readonly IPluginLog log;
     private readonly Guid executorInstanceId = Guid.NewGuid();
     private readonly HashSet<Guid> usedOperationIds = [];
+    private readonly TaskManager taskManager;
 
     private PayoutTradeOperation? operation;
-    private TradeCompletionDetector? detector;
     private long sequenceNumber;
     private long gilBefore;
-    private bool playerDetected;
-    private uint expectedPlayerEntityId;
     private uint? expectedHomeWorldRowId;
-    private DateTimeOffset? lastWaitDiagnosticAt;
-    private bool exactPartnerVerified;
+    private bool playerDetected;
     private bool tradeOpened;
-    private bool tradeConditionSeenOpen;
-    private DateTimeOffset? lastLockDiagnosticAt;
-    private bool tradeRequested;
-    private bool gilInputOpened;
-    private bool amountSubmitted;
-    private bool tradeLocked;
     private bool confirmationAccepted;
-    private bool structuredDumpLogged;
-    private DateTimeOffset? tradeConditionOpenSince;
-    private DateTimeOffset? tradeClosedAt;
-    private DateTimeOffset? waitingSince;
-    private DateTimeOffset nextActionAt = DateTimeOffset.MinValue;
-    private DateTimeOffset nextTradeRequestAt = DateTimeOffset.MinValue;
+    private bool sequenceQueued;
+    private bool cancelRequested;
     private bool disposed;
 
     public BuiltInPayoutTradeExecutor(
@@ -75,6 +66,13 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         this.gameGui = gameGui;
         this.data = data;
         this.log = log;
+        taskManager = new TaskManager(new TaskManagerConfiguration
+        {
+            TimeLimitMS = TaskTimeLimitMs,
+            AbortOnTimeout = true,
+            ShowError = false,
+            ShowDebug = false,
+        });
         framework.Update += OnFrameworkUpdate;
     }
 
@@ -99,8 +97,6 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         usedOperationIds.Add(leg.OperationId);
         ResetTransientState();
         gilBefore = ReadCurrentGil();
-        waitingSince = DateTimeOffset.UtcNow;
-        detector = new TradeCompletionDetector(leg.AmountGil);
         operation = new PayoutTradeOperation(
             leg.OperationId,
             leg.SessionId,
@@ -114,6 +110,8 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             null,
             null,
             false);
+        // The task queue is enqueued on the framework thread (see OnFrameworkUpdate); StartOperation
+        // runs on a background coordinator thread, so it must not touch the TaskManager directly.
         return true;
     }
 
@@ -124,14 +122,15 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             return false;
         }
 
+        // Financial safety: never abort a trade that is already open in-game (gil could still move);
+        // the dealer resolves it by closing the trade window, which the sequence turns into a clean
+        // release. Otherwise request the abort; the framework thread performs it.
         if (tradeOpened || condition[ConditionFlag.TradeOpen])
         {
             return false;
         }
 
-        PublishTerminal(PayoutTradeEventType.TradeCancelled, PayoutTradeState.Cancelled, "backendCancelled", null, false);
-        operation = null;
-        detector = null;
+        cancelRequested = true;
         return true;
     }
 
@@ -146,225 +145,91 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
 
         disposed = true;
         framework.Update -= OnFrameworkUpdate;
+        taskManager.Abort();
+        taskManager.Dispose();
         operation = null;
-        detector = null;
         TradeEventReceived = null;
     }
 
+    // Framework-thread supervisor: enqueues the trade sequence, performs backend-requested aborts, and
+    // resolves the terminal outcome if the sequence ends (timeout/abort) without the resolve step.
     private void OnFrameworkUpdate(IFramework _)
     {
-        if (!IsAutomating() || operation is null || detector is null)
+        if (disposed || operation is null)
         {
             return;
         }
 
-        var currentOperation = operation!;
-
         try
         {
-            if (!condition[ConditionFlag.TradeOpen])
+            if (cancelRequested)
             {
-                if (!tradeOpened)
-                {
-                    if (!tradeConditionSeenOpen)
-                    {
-                        // The player has not accepted a trade yet: keep waiting for them, re-send
-                        // the trade request on the throttle, and time out if they never appear so
-                        // the payout slot is never held forever.
-                        tradeConditionOpenSince = null;
-                        DriveWaitingForPlayer(currentOperation);
-                        return;
-                    }
-
-                    // The trade window was accepted and then closed before the executor could
-                    // drive it (e.g. the Trade addon never became ready). Never loop back to
-                    // re-requesting the trade; settle briefly to read the final gil, then emit a
-                    // terminal event so the backend can release the tokens.
-                    tradeClosedAt ??= DateTimeOffset.UtcNow;
-                    if (DateTimeOffset.UtcNow - tradeClosedAt.Value < SettleWindow &&
-                        (!TryReadCurrentGil(out var undrivenGil) || undrivenGil != gilBefore - currentOperation.AmountGil))
-                    {
-                        return;
-                    }
-
-                    ResolveClosedTrade(currentOperation);
-                    operation = null;
-                    detector = null;
-                    return;
-                }
-
-                tradeClosedAt ??= DateTimeOffset.UtcNow;
-                if (DateTimeOffset.UtcNow - tradeClosedAt.Value < SettleWindow &&
-                    (!TryReadCurrentGil(out var closedGil) || closedGil != gilBefore - currentOperation.AmountGil))
-                {
-                    return;
-                }
-
-                ObserveAndFinish(currentOperation, false, false, false);
+                cancelRequested = false;
+                taskManager.Abort();
+                PublishTerminal(PayoutTradeEventType.TradeCancelled, PayoutTradeState.Cancelled, "backendCancelled", null, false);
                 operation = null;
-                detector = null;
                 return;
             }
 
-            tradeConditionOpenSince ??= DateTimeOffset.UtcNow;
-            tradeConditionSeenOpen = true;
-            if (!TryGetAddonByName("Trade", out var tradeAddon) || !PayoutTradeUiAccessor.IsAddonReady(tradeAddon))
+            if (!sequenceQueued)
             {
-                if (tradeConditionOpenSince is not null && DateTimeOffset.UtcNow - tradeConditionOpenSince.Value > TradeReadyTimeout)
-                {
-                    PublishTerminal(
-                        PayoutTradeEventType.TradeFailed,
-                        PayoutTradeState.Failed,
-                        "tradeAddonUnavailable",
-                        "The trade opened but its addon never became ready in time.",
-                        false);
-                    operation = null;
-                    detector = null;
-                }
-
+                EnqueueTradeSequence();
+                sequenceQueued = true;
                 return;
             }
 
-            if (!tradeOpened)
+            // The resolve step clears `operation` on success; if the operation is still present with no
+            // tasks left, the sequence aborted or timed out — resolve it from the gil balance.
+            if (!taskManager.IsBusy)
             {
-                tradeOpened = true;
-                UpdateOperation(PayoutTradeState.TradeOpened, null, null, false);
-                Publish(PayoutTradeEventType.TradeOpened, null, null, false);
+                ResolveOutcome(tradeCurrentlyOpen: condition[ConditionFlag.TradeOpen]);
             }
-
-            if (!gilInputOpened && DateTimeOffset.UtcNow >= nextActionAt)
-            {
-                PayoutTradeUiAccessor.FireTradeGilInputCallback(tradeAddon);
-                gilInputOpened = true;
-                nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
-            }
-            else if (gilInputOpened && !amountSubmitted && TrySubmitTradeAmount((int)operation.AmountGil))
-            {
-                amountSubmitted = true;
-                nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
-            }
-
-            if (!TryReadStructuredTradeState(operation, out var state))
-            {
-                return;
-            }
-
-            if (!structuredDumpLogged)
-            {
-                structuredDumpLogged = true;
-                LogStructuredDump(operation);
-            }
-
-            if (!amountSubmitted)
-            {
-                if (tradeConditionOpenSince is not null &&
-                    DateTimeOffset.UtcNow - tradeConditionOpenSince.Value > AmountSubmissionTimeout)
-                {
-                    PublishTerminal(
-                        PayoutTradeEventType.TradeFailed,
-                        PayoutTradeState.Failed,
-                        "amountSubmissionFailed",
-                        "The trade opened, but the expected gil amount could not be entered.",
-                        false);
-                    operation = null;
-                    detector = null;
-                    return;
-                }
-
-                return;
-            }
-
-            if (!tradeLocked && state.LocalTradeLocked && state.PartnerTradeLocked)
-            {
-                tradeLocked = true;
-                UpdateOperation(PayoutTradeState.TradeLocked, null, null, false);
-                Publish(PayoutTradeEventType.TradeLocked, null, null, false);
-            }
-
-            TryConfirmTrade(tradeAddon, state);
-            detector.Observe(state);
-            LogLockDiagnostics(currentOperation, state, tradeAddon);
         }
         catch (Exception exception)
         {
-            if (tradeOpened)
+            log.Error($"Catsino payout supervisor failed: {exception}");
+            if (operation is not null)
             {
-                LogPayoutFailure("update", currentOperation, exception);
-                PublishTerminal(
-                    PayoutTradeEventType.TradeFailed,
-                    PayoutTradeState.Failed,
-                    "structuredObservationFailed",
-                    $"Structured payout observation failed after the trade opened: {exception.Message}",
-                    false);
-            }
-            else
-            {
-                log.Error($"Catsino payout failed before trade opened for {currentOperation.CharacterName}@{currentOperation.HomeWorld}: {exception}");
                 PublishTerminal(PayoutTradeEventType.TradeFailed, PayoutTradeState.Failed, "automationFailed", exception.Message, false);
-            }
-
-            operation = null;
-            detector = null;
-        }
-    }
-
-    private void DriveWaitingForPlayer(PayoutTradeOperation current)
-    {
-        var playerReadyToTrade = TryTargetExactPlayer(current);
-        var now = DateTimeOffset.UtcNow;
-        var waitTimedOut = waitingSince is not null && now - waitingSince.Value > WaitForPlayerTimeout;
-        var action = PlayerWaitPlanner.Plan(
-            condition[ConditionFlag.TradeOpen],
-            waitTimedOut,
-            playerReadyToTrade,
-            now >= nextTradeRequestAt);
-
-        switch (action)
-        {
-            case PlayerWaitAction.ResendTradeRequest:
-                // Re-send /trade on the throttle: a single request can be missed or expire before
-                // the player accepts, so keep offering until the trade window actually opens.
-                GameChat.SendCommand("/trade");
-                tradeRequested = true;
-                nextTradeRequestAt = now.Add(TradeRequestThrottle);
-                break;
-            case PlayerWaitAction.TimedOut:
-                PublishTerminal(
-                    PayoutTradeEventType.TradeTimedOut,
-                    PayoutTradeState.Failed,
-                    "playerWaitTimedOut",
-                    "The paying-out player did not become tradeable in time; no gil was transferred.",
-                    false);
                 operation = null;
-                detector = null;
-                break;
+            }
         }
     }
 
-    // Finds and targets the exact paying-out player. Returns true once that player is targetable
-    // and hard-targeted (ready for a /trade request); false while still resolving, searching, or
-    // settling immediately after the target was set.
-    private bool TryTargetExactPlayer(PayoutTradeOperation current)
+    private void EnqueueTradeSequence()
     {
+        taskManager.Abort();
+        taskManager.Enqueue(TargetAndRequestTrade, "Catsino.TargetAndRequestTrade");
+        taskManager.Enqueue(WaitTradeOpen, "Catsino.WaitTradeOpen");
+        taskManager.Enqueue(OpenGilInput, "Catsino.OpenGilInput");
+        taskManager.Enqueue(SetGilAmount, "Catsino.SetGilAmount");
+        taskManager.Enqueue(ConfirmTrade, "Catsino.ConfirmTrade");
+        taskManager.Enqueue(WaitTradeClosed, "Catsino.WaitTradeClosed");
+        taskManager.Enqueue(ResolveOnClose, "Catsino.ResolveOnClose");
+    }
+
+    private bool TargetAndRequestTrade()
+    {
+        var current = operation;
+        if (current is null)
+        {
+            return true;
+        }
+
+        expectedHomeWorldRowId ??= ResolveHomeWorldRowId(current.HomeWorld);
         if (expectedHomeWorldRowId is null)
         {
-            expectedHomeWorldRowId = ResolveHomeWorldRowId(current.HomeWorld);
-            if (expectedHomeWorldRowId is null)
-            {
-                LogWaitDiagnostics(current, $"the Home World '{current.HomeWorld}' did not resolve to any game world");
-                return false;
-            }
+            return false;
         }
 
         var worldRowId = expectedHomeWorldRowId.Value;
-        var targetPlayer = objects
+        var target = objects
             .OfType<IPlayerCharacter>()
             .FirstOrDefault(player => player.IsTargetable &&
                 player.HomeWorld.RowId == worldRowId &&
                 string.Equals(player.Name.ToString(), current.CharacterName, StringComparison.OrdinalIgnoreCase));
-        if (targetPlayer is null)
+        if (target is null)
         {
-            LogWaitDiagnostics(current, "no targetable nearby player matched the exact name and Home World");
             return false;
         }
 
@@ -375,127 +240,161 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             Publish(PayoutTradeEventType.PlayerDetected, null, null, false);
         }
 
-        expectedPlayerEntityId = targetPlayer.EntityId;
-        if (targets.Target?.Address != targetPlayer.Address)
+        if (targets.Target?.Address == target.Address)
         {
-            targets.Target = targetPlayer;
-            nextTradeRequestAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
-            return false;
-        }
-
-        return true;
-    }
-
-    private bool TryReadStructuredTradeState(PayoutTradeOperation current, out TradeStateSnapshot state)
-    {
-        state = null!;
-        var inventoryManager = InventoryManager.Instance();
-        if (inventoryManager == null || inventoryManager->TradeItemsLocal.Length < 6)
-        {
-            return false;
-        }
-
-        var localState = inventoryManager->TradeLocalState;
-        var remoteState = inventoryManager->TradeRemoteState;
-        if (localState == TradeState.NotTrading)
-        {
-            return false;
-        }
-
-        if (!TryReadCurrentGil(out var currentGil))
-        {
-            return false;
-        }
-
-        exactPartnerVerified = expectedPlayerEntityId != 0 &&
-                              inventoryManager->TradePartnerEntityId == expectedPlayerEntityId &&
-                              string.Equals(inventoryManager->TradePartnerNameString, current.CharacterName, StringComparison.OrdinalIgnoreCase);
-
-        var anyNonGilItem = false;
-        var slots = inventoryManager->TradeItemsLocal;
-        for (var index = 0; index < slots.Length; index++)
-        {
-            var itemId = slots[index].ItemId;
-            if (itemId != 0 && itemId != 1)
+            if (FrameThrottler.Throttle("CatsinoPayoutTask", 8) && EzThrottler.Throttle("CatsinoPayoutTradeOpen", 2000))
             {
-                anyNonGilItem = true;
+                GameChat.SendCommand("/trade");
+                return true;
             }
         }
+        else if (FrameThrottler.Throttle("CatsinoPayoutTask", 8))
+        {
+            targets.Target = target;
+        }
 
-        var localLocked = localState >= TradeState.LockedIn;
-        var partnerLocked = remoteState >= TradeState.LockedIn;
-        state = new TradeStateSnapshot(
-            condition[ConditionFlag.TradeOpen],
-            true,
-            exactPartnerVerified,
-            amountSubmitted && !anyNonGilItem,
-            localLocked,
-            partnerLocked,
-            confirmationAccepted || localState == TradeState.Confirmed,
-            gilBefore,
-            currentGil,
-            false,
-            false);
+        return false;
+    }
+
+    private bool WaitTradeOpen()
+    {
+        if (!condition[ConditionFlag.TradeOpen])
+        {
+            return false;
+        }
+
+        if (!tradeOpened)
+        {
+            tradeOpened = true;
+            UpdateOperation(PayoutTradeState.TradeOpened, null, null, false);
+            Publish(PayoutTradeEventType.TradeOpened, null, null, false);
+        }
+
         return true;
     }
 
-    private void ObserveAndFinish(PayoutTradeOperation current, bool tradeAddonReady, bool localLocked, bool partnerLocked)
+    private bool OpenGilInput()
     {
-        var currentGil = TryReadCurrentGil(out var observedGil) ? observedGil : gilBefore;
-        var snapshot = new TradeStateSnapshot(
-            condition[ConditionFlag.TradeOpen],
-            tradeAddonReady,
-            false,
-            false,
-            localLocked,
-            partnerLocked,
-            false,
-            gilBefore,
-            currentGil,
-            false,
-            false);
-        var result = detector!.Observe(snapshot);
-        if (result == TradeObservationResult.Completed)
+        if (TryGetAddonByName<AtkUnitBase>("Trade", out var addon) && IsAddonReady(addon))
         {
-            PublishTerminal(PayoutTradeEventType.TradeCompleted, PayoutTradeState.Completed, null, null, false);
+            if (FrameThrottler.Throttle("CatsinoPayoutTask", 8))
+            {
+                Callback.Fire(addon, true, 2, Callback.ZeroAtkValue);
+                return true;
+            }
         }
-        else if (result == TradeObservationResult.Cancelled)
+        else
         {
-            // The trade window was closed (by the dealer or the paying-out player) before the
-            // payout was confirmed and no gil moved. Cancel cleanly: the backend releases the
-            // unpaid remainder to the player so the dealer can start a fresh cash-out.
-            PublishTerminal(
-                PayoutTradeEventType.TradeCancelled,
-                PayoutTradeState.Cancelled,
-                "tradeWindowClosed",
-                "The trade window closed before the payout was confirmed; no gil was transferred.",
-                false);
+            FrameThrottler.Throttle("CatsinoPayoutTask", 8, true);
         }
-        else if (result == TradeObservationResult.ReconciliationRequired)
-        {
-            PublishTerminal(
-                PayoutTradeEventType.TradeFailed,
-                PayoutTradeState.ReconciliationRequired,
-                "reconciliationRequired",
-                "The trade closed without complete structured proof of the exact gil transfer.",
-                true);
-        }
+
+        return false;
     }
 
-    private void ResolveClosedTrade(PayoutTradeOperation current)
+    private bool SetGilAmount()
     {
+        var current = operation;
+        if (current is null)
+        {
+            return true;
+        }
+
+        if (TryGetAddonByName<AtkUnitBase>("InputNumeric", out var addon) && IsAddonReady(addon))
+        {
+            if (FrameThrottler.Throttle("CatsinoPayoutTask", 8))
+            {
+                Callback.Fire(addon, true, (int)current.AmountGil);
+                return true;
+            }
+        }
+        else
+        {
+            FrameThrottler.Throttle("CatsinoPayoutTask", 8, true);
+        }
+
+        return false;
+    }
+
+    // Locks the trade (node-3 button) and confirms the resulting SelectYesno, retrying each until the
+    // Trade addon disappears (trade completed or cancelled).
+    private bool ConfirmTrade()
+    {
+        if (TryGetAddonByName<AtkUnitBase>("Trade", out var tradeAddon) && IsAddonReady(tradeAddon))
+        {
+            var tradeButton = (AtkComponentButton*)tradeAddon->UldManager.NodeList[3]->GetComponent();
+            if (EzThrottler.Check("CatsinoPayoutLock")
+                && FrameThrottler.Check("CatsinoPayoutLock")
+                && tradeButton != null && tradeButton->IsEnabled
+                && EzThrottler.Throttle("CatsinoPayoutConfirmDelay", 200)
+                && EzThrottler.Throttle("CatsinoPayoutLock", 2000))
+            {
+                tradeButton->ClickAddonButton(tradeAddon);
+            }
+        }
+        else
+        {
+            return true;
+        }
+
+        if (TryFindSelectYesNo(out var yesno)
+            && EzThrottler.Throttle("CatsinoPayoutConfirmDelay", 200)
+            && EzThrottler.Throttle("CatsinoPayoutSelectYes", 2000))
+        {
+            new AddonMaster.SelectYesno(yesno).Yes();
+            confirmationAccepted = true;
+        }
+
+        return !TryGetAddonByName<AtkUnitBase>("Trade", out _);
+    }
+
+    private bool WaitTradeClosed() => !condition[ConditionFlag.TradeOpen];
+
+    private bool ResolveOnClose()
+    {
+        ResolveOutcome(tradeCurrentlyOpen: false);
+        return true;
+    }
+
+    // Single terminal-outcome decision, shared by the normal close path and the abort/timeout path.
+    // The exact gil debit (TradeCloseEvaluator) is the authoritative proof; a button press is not.
+    private void ResolveOutcome(bool tradeCurrentlyOpen)
+    {
+        if (operation is null)
+        {
+            return;
+        }
+
+        var amount = operation.AmountGil;
         var gilRead = TryReadCurrentGil(out var gil);
-        switch (TradeCloseEvaluator.Evaluate(gilRead, gilBefore, gil, current.AmountGil, confirmationAccepted))
+        switch (TradeCloseEvaluator.Evaluate(gilRead, gilBefore, gil, amount, confirmationAccepted))
         {
             case TradeCloseDecision.Completed:
                 PublishTerminal(PayoutTradeEventType.TradeCompleted, PayoutTradeState.Completed, null, null, false);
+                break;
+            case TradeCloseDecision.Cancelled when tradeCurrentlyOpen:
+                // The sequence gave up while a trade window is still open (gil could yet move): the
+                // outcome is genuinely unknown, so flag it for reconciliation rather than releasing blind.
+                PublishTerminal(
+                    PayoutTradeEventType.TradeFailed,
+                    PayoutTradeState.ReconciliationRequired,
+                    "reconciliationRequired",
+                    "The payout was abandoned while the trade window was still open; the outcome is unverified.",
+                    true);
+                break;
+            case TradeCloseDecision.Cancelled when !tradeOpened:
+                PublishTerminal(
+                    PayoutTradeEventType.TradeTimedOut,
+                    PayoutTradeState.Failed,
+                    "playerWaitTimedOut",
+                    "The paying-out player did not become tradeable in time; no gil was transferred.",
+                    false);
                 break;
             case TradeCloseDecision.Cancelled:
                 PublishTerminal(
                     PayoutTradeEventType.TradeCancelled,
                     PayoutTradeState.Cancelled,
                     "tradeWindowClosed",
-                    "The trade window closed before the payout could be processed; no gil was transferred.",
+                    "The trade window closed before the payout was confirmed; no gil was transferred.",
                     false);
                 break;
             default:
@@ -503,92 +402,36 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
                     PayoutTradeEventType.TradeFailed,
                     PayoutTradeState.ReconciliationRequired,
                     "reconciliationRequired",
-                    "The trade closed without complete structured proof of the exact gil transfer.",
+                    "The trade closed without complete proof of the exact gil transfer.",
                     true);
                 break;
         }
+
+        operation = null;
     }
 
-    private bool TrySubmitTradeAmount(int amountGil)
-    {
-        if (DateTimeOffset.UtcNow < nextActionAt || !TryGetAddonByName("InputNumeric", out var inputNumericAddon) || !PayoutTradeUiAccessor.IsAddonReady(inputNumericAddon))
-        {
-            return false;
-        }
-
-        inputNumericAddon->FireCallbackInt(amountGil);
-        return true;
-    }
-
-    private void TryConfirmTrade(AtkUnitBase* tradeAddon, TradeStateSnapshot state)
-    {
-        // Resolve the trade lock-in button from node 3 only. The stricter partner-ready node
-        // walk (node 31) is unreliable and must never gate the click; both-sides-locked is read
-        // from the structured InventoryManager state (tradeLocked) instead.
-        var hasLockButton = PayoutTradeUiAccessor.TryGetTradeLockButton(tradeAddon, out var tradeButton);
-        var lockButtonEnabled = hasLockButton && tradeButton->IsEnabled;
-
-        var selectYesNoReady = TryFindSelectYesNo(out var prompt);
-        var yesButtonEnabled = selectYesNoReady && prompt->YesButton != null && prompt->YesButton->IsEnabled;
-
-        var action = TradeConfirmationPlanner.Plan(
-            condition[ConditionFlag.TradeOpen],
-            DateTimeOffset.UtcNow >= nextActionAt,
-            amountSubmitted,
-            state.ExactPartnerVerified,
-            state.ExactAmountSubmitted,
-            tradeLocked,
-            lockButtonEnabled,
-            selectYesNoReady,
-            yesButtonEnabled);
-
-        switch (action)
-        {
-            case TradeConfirmationAction.Lock:
-            case TradeConfirmationAction.SummonConfirm:
-                // Phase A lock-in, or phase B re-press to raise the confirmation dialog. Pressing
-                // the button is not, by itself, an accepted confirmation.
-                PayoutTradeUiAccessor.ClickButton(tradeButton, tradeAddon);
-                nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
-                break;
-            case TradeConfirmationAction.ConfirmYes:
-                // The final confirmation dialog is up: accept it. Only here is confirmation
-                // considered accepted.
-                PayoutTradeUiAccessor.ClickButton(prompt->YesButton, (AtkUnitBase*)prompt);
-                confirmationAccepted = true;
-                nextActionAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
-                break;
-        }
-    }
-
-    private bool TryFindSelectYesNo(out AddonSelectYesno* prompt)
+    // The trade-confirmation SelectYesno. During a payout trade the only dialog raised is the trade
+    // confirm, so the first ready SelectYesno is accepted.
+    private bool TryFindSelectYesNo(out AtkUnitBase* prompt)
     {
         prompt = null;
         for (var index = 1; index < 20; index++)
         {
-            if (!TryGetAddonByName("SelectYesno", out var addon, index) || !PayoutTradeUiAccessor.IsAddonReady(addon))
+            var pointer = gameGui.GetAddonByName("SelectYesno", index);
+            if (pointer.Address == IntPtr.Zero)
             {
-                continue;
+                break;
             }
 
-            prompt = (AddonSelectYesno*)addon;
-            return true;
+            var addon = (AtkUnitBase*)pointer.Address;
+            if (IsAddonReady(addon))
+            {
+                prompt = addon;
+                return true;
+            }
         }
 
         return false;
-    }
-
-    private bool TryGetAddonByName(string name, out AtkUnitBase* addon, int index = 1)
-    {
-        addon = null;
-        var pointer = gameGui.GetAddonByName(name, index);
-        if (pointer.Address == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        addon = (AtkUnitBase*)pointer.Address;
-        return addon != null;
     }
 
     private uint? ResolveHomeWorldRowId(string homeWorld)
@@ -609,89 +452,6 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         }
 
         return null;
-    }
-
-    private void LogWaitDiagnostics(PayoutTradeOperation current, string reason)
-    {
-        if (lastWaitDiagnosticAt is not null && DateTimeOffset.UtcNow - lastWaitDiagnosticAt.Value < TimeSpan.FromSeconds(5))
-        {
-            return;
-        }
-
-        lastWaitDiagnosticAt = DateTimeOffset.UtcNow;
-        var builder = new System.Text.StringBuilder();
-        builder.Append($"Catsino payout: still WaitingForPlayer - {reason}. Expected name='{current.CharacterName}', world='{current.HomeWorld}' (resolved row {(expectedHomeWorldRowId?.ToString() ?? "none")}). Nearby targetable players: ");
-        var any = false;
-        foreach (var player in objects.OfType<IPlayerCharacter>().Where(player => player.IsTargetable))
-        {
-            any = true;
-            builder.Append($"{player.Name}@{player.HomeWorld.Value.Name}(row {player.HomeWorld.RowId}); ");
-        }
-
-        if (!any)
-        {
-            builder.Append("(none)");
-        }
-
-        log.Debug(builder.ToString());
-    }
-
-    private void LogLockDiagnostics(PayoutTradeOperation current, TradeStateSnapshot state, AtkUnitBase* tradeAddon)
-    {
-        var stalledAtLock = amountSubmitted && !tradeLocked;
-        var stalledAtConfirm = tradeLocked && !confirmationAccepted;
-        if (!stalledAtLock && !stalledAtConfirm)
-        {
-            lastLockDiagnosticAt = null;
-            return;
-        }
-
-        if (lastLockDiagnosticAt is not null && DateTimeOffset.UtcNow - lastLockDiagnosticAt.Value < TimeSpan.FromSeconds(5))
-        {
-            return;
-        }
-
-        lastLockDiagnosticAt = DateTimeOffset.UtcNow;
-        var lockStateRead = PayoutTradeUiAccessor.TryGetLockState(tradeAddon, out var tradeButton, out _);
-        var lockButtonEnabled = lockStateRead && tradeButton != null && tradeButton->IsEnabled;
-        log.Debug(
-            $"Catsino payout lock diagnostics for {current.CharacterName}@{current.HomeWorld}: " +
-            $"stage={(stalledAtLock ? "awaitingLock" : "awaitingConfirm")}, exactPartnerVerified={state.ExactPartnerVerified}, " +
-            $"exactAmountSubmitted={state.ExactAmountSubmitted}, localLocked={state.LocalTradeLocked}, partnerLocked={state.PartnerTradeLocked}, " +
-            $"confirmationAccepted={confirmationAccepted}, lockStateRead={lockStateRead}, lockButtonEnabled={lockButtonEnabled}.");
-    }
-
-    private void LogStructuredDump(PayoutTradeOperation current)
-    {
-        var inventoryManager = InventoryManager.Instance();
-        if (inventoryManager == null)
-        {
-            log.Debug("Catsino payout dump: InventoryManager unavailable.");
-            return;
-        }
-
-        var builder = new System.Text.StringBuilder();
-        builder.Append($"Catsino payout structured dump for {current.CharacterName}@{current.HomeWorld} (want {current.AmountGil:N0} gil): ");
-        builder.Append($"localState={inventoryManager->TradeLocalState}, remoteState={inventoryManager->TradeRemoteState}, ");
-        builder.Append($"partnerId={inventoryManager->TradePartnerEntityId} (expect {expectedPlayerEntityId}), partner='{inventoryManager->TradePartnerNameString}'. Local slots: ");
-        var slots = inventoryManager->TradeItemsLocal;
-        for (var index = 0; index < slots.Length; index++)
-        {
-            builder.Append($"[{index}] item={slots[index].ItemId} qty={slots[index].Quantity}; ");
-        }
-
-        log.Debug(builder.ToString());
-    }
-
-    private void LogPayoutFailure(string stage, PayoutTradeOperation current, Exception exception)
-    {
-        var builder = new System.Text.StringBuilder();
-        builder.Append($"Catsino payout failure during {stage} for {current.CharacterName}@{current.HomeWorld} / {current.AmountGil:N0} gil. ");
-        builder.Append($"operationId={current.OperationId}, state={current.State}, ");
-        builder.Append($"flags: playerDetected={playerDetected}, tradeRequested={tradeRequested}, tradeOpened={tradeOpened}, gilInputOpened={gilInputOpened}, amountSubmitted={amountSubmitted}, tradeLocked={tradeLocked}, confirmationAccepted={confirmationAccepted}. ");
-        builder.Append($"exception={exception}");
-        log.Error(builder.ToString());
-        LogStructuredDump(current);
     }
 
     private bool TryReadCurrentGil(out long gil)
@@ -762,25 +522,12 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
 
     private void ResetTransientState()
     {
-        playerDetected = false;
-        expectedPlayerEntityId = 0;
         expectedHomeWorldRowId = null;
-        lastWaitDiagnosticAt = null;
-        exactPartnerVerified = false;
+        playerDetected = false;
         tradeOpened = false;
-        tradeConditionSeenOpen = false;
-        lastLockDiagnosticAt = null;
-        tradeRequested = false;
-        gilInputOpened = false;
-        amountSubmitted = false;
-        tradeLocked = false;
         confirmationAccepted = false;
-        structuredDumpLogged = false;
-        tradeConditionOpenSince = null;
-        tradeClosedAt = null;
-        waitingSince = null;
-        nextActionAt = DateTimeOffset.MinValue;
-        nextTradeRequestAt = DateTimeOffset.MinValue;
+        sequenceQueued = false;
+        cancelRequested = false;
     }
 
     private static bool IsExactCharacterName(string value)

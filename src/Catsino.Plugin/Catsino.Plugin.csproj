@@ -6,14 +6,15 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>Catsino.Plugin</AssemblyName>
     <RootNamespace>Catsino.Plugin</RootNamespace>
-    <Version>1.3.4</Version>
-    <AssemblyVersion>1.3.4.0</AssemblyVersion>
+    <Version>1.3.5</Version>
+    <AssemblyVersion>1.3.5.0</AssemblyVersion>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Catsino.Plugin.Contracts\Catsino.Plugin.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="ECommons" Version="3.2.1.17" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>

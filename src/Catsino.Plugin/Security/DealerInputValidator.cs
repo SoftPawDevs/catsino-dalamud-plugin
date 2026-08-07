@@ -75,8 +75,55 @@ public static partial class DealerInputValidator
     public static bool TryParseGil(string text, out long amount) =>
         long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out amount);
 
-    public static bool TryParseBalanceAdjustment(string text, out long amount) =>
-        long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out amount) && amount is not (0 or long.MinValue);
+    // Parses a signed, non-zero whole-gil balance adjustment. Accepts a case-insensitive k/m/b
+    // shorthand suffix (250k = 250,000; 5m = 5,000,000; -1.5m = -1,500,000) and tolerates grouping
+    // separators (dots/commas/spaces) the dealer may have typed. Rejects non-whole-gil results.
+    public static bool TryParseBalanceAdjustment(string text, out long amount)
+    {
+        amount = 0;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var trimmed = text.Trim();
+        long multiplier = 1;
+        var last = char.ToLowerInvariant(trimmed[^1]);
+        if (last is 'k' or 'm' or 'b')
+        {
+            multiplier = last switch { 'k' => 1_000L, 'm' => 1_000_000L, _ => 1_000_000_000L };
+            trimmed = trimmed[..^1].Trim();
+        }
+
+        var normalized = trimmed.Replace(" ", string.Empty);
+        if (multiplier == 1)
+        {
+            // No suffix: treat dots/commas as thousands grouping and require a whole integer.
+            normalized = normalized.Replace(".", string.Empty).Replace(",", string.Empty);
+            if (!long.TryParse(normalized, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out amount))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            // With a suffix, the value may be fractional (1.5m); the product must be whole gil.
+            if (!decimal.TryParse(normalized, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value))
+            {
+                return false;
+            }
+
+            var product = value * multiplier;
+            if (product != decimal.Truncate(product) || product < long.MinValue || product > long.MaxValue)
+            {
+                return false;
+            }
+
+            amount = (long)product;
+        }
+
+        return amount is not (0 or long.MinValue);
+    }
 
     [GeneratedRegex("^[\\p{L}][\\p{L}'-]{1,14} [\\p{L}][\\p{L}'-]{1,14}$", RegexOptions.CultureInvariant)]
     private static partial Regex CharacterNameRegex();

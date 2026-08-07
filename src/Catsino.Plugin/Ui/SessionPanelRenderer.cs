@@ -15,6 +15,10 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
     private readonly ConcurrentDictionary<SessionPlayerKey, byte> busyPlayers = new();
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
 
+    // Formats a gil amount with '.' thousands separators (e.g. 5000000 -> "5.000.000").
+    private static readonly NumberFormatInfo DottedGil = new() { NumberGroupSeparator = ".", NumberGroupSizes = [3], NumberDecimalDigits = 0 };
+    private static string FormatGilDotted(long amount) => amount.ToString("N0", DottedGil);
+
     public void Draw(Guid sessionId)
     {
         while (pendingUiUpdates.TryDequeue(out var update))
@@ -158,9 +162,17 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TableNextColumn();
         var draft = runtime.ActionDrafts.GetBalanceAdjustment(key);
         ImGui.SetNextItemWidth(100);
-        if (ImGui.InputText("##signedAdjustment", ref draft, 20, ImGuiInputTextFlags.CharsDecimal))
+        // No CharsDecimal filter so k/m/b shorthand (e.g. "5m", "250k") can be typed; the parser
+        // interprets it and the preview shows the resolved whole-gil amount.
+        if (ImGui.InputText("##signedAdjustment", ref draft, 20))
         {
             runtime.ActionDrafts.SetBalanceAdjustment(key, draft);
+        }
+
+        if (DealerInputValidator.TryParseBalanceAdjustment(draft, out var adjustmentPreview))
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled($"({FormatGilDotted(adjustmentPreview)})");
         }
 
         ImGui.SameLine();

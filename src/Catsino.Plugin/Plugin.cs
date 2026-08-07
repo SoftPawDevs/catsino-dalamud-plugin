@@ -5,6 +5,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using ECommons;
 
 namespace Catsino.Plugin;
 
@@ -36,6 +37,9 @@ public sealed class Plugin : IDalamudPlugin
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
+        // Initialize ECommons before anything that uses its trade automation (Callback, NeoTaskManager,
+        // ClickAddonButton, AddonMaster, throttlers, Svc) is constructed.
+        ECommonsMain.Init(pluginInterface, this);
         runtime = new CatsinoRuntime(pluginInterface, playerState, framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
         sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId));
         window = new CatsinoWindow(runtime, sessionPanel);
@@ -65,6 +69,7 @@ public sealed class Plugin : IDalamudPlugin
         commandManager.RemoveHandler(Command);
         windowSystem.RemoveAllWindows();
         runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        ECommonsMain.Dispose();
     }
 
     private void OpenMainUi() => window.IsOpen = true;

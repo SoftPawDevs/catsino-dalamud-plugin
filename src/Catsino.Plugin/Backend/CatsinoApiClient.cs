@@ -477,5 +477,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.3.4";
+    public const string Current = "1.3.5";
 }
