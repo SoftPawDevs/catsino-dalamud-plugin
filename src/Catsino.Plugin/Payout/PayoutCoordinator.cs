@@ -58,7 +58,18 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         {
             if (active is not null)
             {
-                throw new InvalidOperationException("Only one payout operation can be active.");
+                // Self-heal a stale active operation: if the executor is no longer driving the
+                // previous operation (it finished but its terminal event was dropped before we
+                // could clear state), abandon the stale slot so a new cash-out is not blocked
+                // forever. Only refuse when the executor is genuinely still driving a payout.
+                if (executor.GetOperation(active.Leg.OperationId) is not null && executor.Probe().ActiveOperation is not null)
+                {
+                    throw new InvalidOperationException("Only one payout operation can be active.");
+                }
+
+                reportStatus("Cleared a stale payout operation whose executor had already finished; starting the new leg.");
+                active = null;
+                ActiveOperation = null;
             }
 
             if (terminalOperations.Contains(leg.OperationId))

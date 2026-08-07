@@ -19,6 +19,11 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     private static readonly TimeSpan TradeRequestThrottle = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(2);
 
+    // Upper bound on waiting for the paying-out player to appear and accept the trade before the
+    // window opens. Without this a never-appearing player would keep the payout slot occupied
+    // forever and block every later cash-out. Purely time-based (spec 6.10); tunable (spec 25.5).
+    private static readonly TimeSpan WaitForPlayerTimeout = TimeSpan.FromMinutes(3);
+
     private readonly IFramework framework;
     private readonly IObjectTable objects;
     private readonly ITargetManager targets;
@@ -49,6 +54,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     private bool structuredDumpLogged;
     private DateTimeOffset? tradeConditionOpenSince;
     private DateTimeOffset? tradeClosedAt;
+    private DateTimeOffset? waitingSince;
     private DateTimeOffset nextActionAt = DateTimeOffset.MinValue;
     private DateTimeOffset nextTradeRequestAt = DateTimeOffset.MinValue;
     private bool disposed;
@@ -93,6 +99,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         usedOperationIds.Add(leg.OperationId);
         ResetTransientState();
         gilBefore = ReadCurrentGil();
+        waitingSince = DateTimeOffset.UtcNow;
         detector = new TradeCompletionDetector(leg.AmountGil);
         operation = new PayoutTradeOperation(
             leg.OperationId,
@@ -161,9 +168,11 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
                 {
                     if (!tradeConditionSeenOpen)
                     {
-                        // The player has not accepted a trade yet: keep waiting for them.
+                        // The player has not accepted a trade yet: keep waiting for them, re-send
+                        // the trade request on the throttle, and time out if they never appear so
+                        // the payout slot is never held forever.
                         tradeConditionOpenSince = null;
-                        WaitForExactPlayer(currentOperation);
+                        DriveWaitingForPlayer(currentOperation);
                         return;
                     }
 
@@ -299,7 +308,43 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         }
     }
 
-    private void WaitForExactPlayer(PayoutTradeOperation current)
+    private void DriveWaitingForPlayer(PayoutTradeOperation current)
+    {
+        var playerReadyToTrade = TryTargetExactPlayer(current);
+        var now = DateTimeOffset.UtcNow;
+        var waitTimedOut = waitingSince is not null && now - waitingSince.Value > WaitForPlayerTimeout;
+        var action = PlayerWaitPlanner.Plan(
+            condition[ConditionFlag.TradeOpen],
+            waitTimedOut,
+            playerReadyToTrade,
+            now >= nextTradeRequestAt);
+
+        switch (action)
+        {
+            case PlayerWaitAction.ResendTradeRequest:
+                // Re-send /trade on the throttle: a single request can be missed or expire before
+                // the player accepts, so keep offering until the trade window actually opens.
+                GameChat.SendCommand("/trade");
+                tradeRequested = true;
+                nextTradeRequestAt = now.Add(TradeRequestThrottle);
+                break;
+            case PlayerWaitAction.TimedOut:
+                PublishTerminal(
+                    PayoutTradeEventType.TradeTimedOut,
+                    PayoutTradeState.Failed,
+                    "playerWaitTimedOut",
+                    "The paying-out player did not become tradeable in time; no gil was transferred.",
+                    false);
+                operation = null;
+                detector = null;
+                break;
+        }
+    }
+
+    // Finds and targets the exact paying-out player. Returns true once that player is targetable
+    // and hard-targeted (ready for a /trade request); false while still resolving, searching, or
+    // settling immediately after the target was set.
+    private bool TryTargetExactPlayer(PayoutTradeOperation current)
     {
         if (expectedHomeWorldRowId is null)
         {
@@ -307,7 +352,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             if (expectedHomeWorldRowId is null)
             {
                 LogWaitDiagnostics(current, $"the Home World '{current.HomeWorld}' did not resolve to any game world");
-                return;
+                return false;
             }
         }
 
@@ -320,7 +365,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         if (targetPlayer is null)
         {
             LogWaitDiagnostics(current, "no targetable nearby player matched the exact name and Home World");
-            return;
+            return false;
         }
 
         if (!playerDetected)
@@ -335,17 +380,10 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         {
             targets.Target = targetPlayer;
             nextTradeRequestAt = DateTimeOffset.UtcNow.Add(ActionThrottle);
-            return;
+            return false;
         }
 
-        if (tradeRequested || DateTimeOffset.UtcNow < nextTradeRequestAt)
-        {
-            return;
-        }
-
-        GameChat.SendCommand("/trade");
-        tradeRequested = true;
-        nextTradeRequestAt = DateTimeOffset.UtcNow.Add(TradeRequestThrottle);
+        return true;
     }
 
     private bool TryReadStructuredTradeState(PayoutTradeOperation current, out TradeStateSnapshot state)
@@ -740,6 +778,7 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         structuredDumpLogged = false;
         tradeConditionOpenSince = null;
         tradeClosedAt = null;
+        waitingSince = null;
         nextActionAt = DateTimeOffset.MinValue;
         nextTradeRequestAt = DateTimeOffset.MinValue;
     }

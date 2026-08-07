@@ -140,6 +140,42 @@ public sealed class TradeCompletionDetector(long expectedAmount)
     }
 }
 
+public enum PlayerWaitAction
+{
+    KeepWaiting,
+    ResendTradeRequest,
+    TimedOut,
+}
+
+// Pure decision helper for the phase before the trade window opens, while the executor is
+// waiting for the paying-out player. Timeout takes precedence so a player who never appears (or
+// never accepts the request) frees the payout slot instead of blocking it forever; otherwise the
+// trade request is re-sent on the throttle. Purely time-based — the FFXIV client language must
+// never influence this (spec 6.10).
+public static class PlayerWaitPlanner
+{
+    public static PlayerWaitAction Plan(
+        bool tradeWindowOpen,
+        bool waitTimedOut,
+        bool playerReadyToTrade,
+        bool resendThrottleElapsed)
+    {
+        if (tradeWindowOpen)
+        {
+            return PlayerWaitAction.KeepWaiting;
+        }
+
+        if (waitTimedOut)
+        {
+            return PlayerWaitAction.TimedOut;
+        }
+
+        return playerReadyToTrade && resendThrottleElapsed
+            ? PlayerWaitAction.ResendTradeRequest
+            : PlayerWaitAction.KeepWaiting;
+    }
+}
+
 public enum TradeConfirmationAction
 {
     None,

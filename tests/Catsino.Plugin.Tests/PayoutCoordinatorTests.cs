@@ -28,6 +28,59 @@ public sealed class PayoutCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task SelfHealsStaleActiveWhenExecutorAlreadyIdle()
+    {
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+
+        await coordinator.StartBackendLegAsync(TestData.Leg());
+        Assert.Equal(1, fakeExecutor.StartCount);
+
+        // The executor finished the previous operation but its terminal event was dropped before
+        // the coordinator could clear state. A new cash-out must not be blocked forever.
+        fakeExecutor.GoIdleWithoutEvent();
+
+        await coordinator.StartBackendLegAsync(TestData.Leg());
+        Assert.Equal(2, fakeExecutor.StartCount);
+        Assert.True(coordinator.HasActiveOperation);
+    }
+
+    [Fact]
+    public async Task StillRefusesSecondOperationWhileExecutorIsBusy()
+    {
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+
+        await coordinator.StartBackendLegAsync(TestData.Leg());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.StartBackendLegAsync(TestData.Leg()));
+        Assert.Equal(1, fakeExecutor.StartCount);
+    }
+
+    [Fact]
+    public async Task StartsNextLegOnlyAfterThePreviousLegCompletes()
+    {
+        // Locks in sequential multi-leg execution: a batch's next leg (a fresh backend
+        // QueuePayoutLeg) is refused while the current leg runs and starts once it completes.
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+        var firstLeg = TestData.Leg();
+
+        await coordinator.StartBackendLegAsync(firstLeg);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.StartBackendLegAsync(TestData.Leg()));
+
+        fakeExecutor.Emit(TestData.TradeEvent(firstLeg, PayoutTradeEventType.TradeCompleted, ambiguous: false));
+        await WaitUntilAsync(() => !coordinator.HasActiveOperation);
+
+        var secondLeg = TestData.Leg();
+        await coordinator.StartBackendLegAsync(secondLeg);
+        Assert.Equal(2, fakeExecutor.StartCount);
+        Assert.Equal(secondLeg.OperationId, coordinator.ActiveOperation?.OperationId);
+    }
+
+    [Fact]
     public async Task AmbiguousOutcomeIsTreatedAsFailedAndWaitsForExactAck()
     {
         var fakeExecutor = new FakeExecutor();
@@ -122,6 +175,10 @@ public sealed class PayoutCoordinatorTests : IDisposable
         }
 
         public bool CancelOperation(Guid operationId) => true;
+
+        // Simulates the executor finishing (going idle) without a terminal event reaching the
+        // coordinator, e.g. the durable outbox write threw after the trade completed.
+        public void GoIdleWithoutEvent() => ActiveOperation = null;
 
         public PayoutTradeOperation? GetOperation(Guid operationId) => ActiveOperation?.OperationId == operationId ? ActiveOperation : null;
 
