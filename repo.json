@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.3.8.0",
+    "AssemblyVersion": "1.3.9.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.8/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.8/Catsino.Plugin.zip?download=1",
-    "Changelog": "Add dealer-side reinvite support so active players can receive a fresh invite link without losing their session balance.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.9/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.3.9/Catsino.Plugin.zip?download=1",
+    "Changelog": "Tighten the dealer roster presentation while keeping the active-player reinvite flow.",
     "Tags": ["dealer", "games"]
   }
 ]

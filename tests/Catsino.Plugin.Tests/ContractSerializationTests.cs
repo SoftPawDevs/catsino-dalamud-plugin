@@ -10,7 +10,7 @@ public sealed class ContractSerializationTests
     public void VersionIsStable()
     {
         Assert.Equal("1.3.0", ContractVersion.Current);
-        Assert.Equal("1.3.8", PluginVersion.Current);
+        Assert.Equal("1.3.9", PluginVersion.Current);
     }
 
     [Fact]

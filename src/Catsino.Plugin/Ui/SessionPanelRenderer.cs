@@ -75,7 +75,6 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
 
         ImGui.TextUnformatted($"{session.GameType} | {session.State} | {roster?.Players.Count ?? session.PlayerCount} players");
         ImGui.TextUnformatted($"Deposited: {session.TotalDepositedGil:N0} gil");
-        ImGui.TextUnformatted($"Payout: {session.PayoutState} | Reconciliation: {session.ReconciliationState}");
         DrawSessionControls(session, state);
 
         if (!string.IsNullOrWhiteSpace(state.ValidationMessage))
@@ -146,13 +145,11 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TableNextRow();
         ImGui.TableNextColumn();
         ImGui.TextUnformatted(player.CharacterName);
+        ShowTooltip($"Betting locked: {player.BettingLocked}\nJoined: {player.JoinedAt:u}");
         if (cashOutRequested)
         {
             ImGui.TextColored(new Vector4(0.36f, 0.90f, 0.83f, 1f), "Cash-out requested");
         }
-
-        ImGui.TextDisabled($"Payout: {player.PayoutState} | Reconciliation: {player.ReconciliationState}");
-        ShowTooltip($"Betting locked: {player.BettingLocked}\nJoined: {player.JoinedAt:u}");
 
         ImGui.TableNextColumn();
         ImGui.TextUnformatted(player.HomeWorld);
