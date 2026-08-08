@@ -158,6 +158,9 @@ public sealed class CatsinoApiClient : IDisposable
     public Task<InviteDto> CreateInviteAsync(Guid sessionId, CreateInviteRequest request, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<InviteDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/invites", request, cancellationToken: cancellationToken);
 
+    public Task<InviteDto> ReinviteAsync(Guid sessionId, Guid membershipId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<InviteDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/players/{membershipId:D}/reinvite", cancellationToken: cancellationToken);
+
     public Task<SessionRosterDto> GetSessionRosterAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<SessionRosterDto>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/roster", cancellationToken: cancellationToken);
 
@@ -496,5 +499,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.3.7";
+    public const string Current = "1.3.8";
 }

@@ -25,6 +25,8 @@
 Notes:
 Invite creation now depends on exact `Character Name`, exact `Home World`, and an explicit starting balance. The plugin UI and runtime both reject duplicate invites when the roster already shows the player as active or pending.
 
+**Reinvite** is the deliberate exception: the per-player roster row has a "Reinvite" button (`SessionPanelRenderer.DrawPlayerRow`) that calls `CatsinoRuntime.ReinviteAndTellAsync(sessionId, membershipId, name, world)` → `CatsinoApiClient.ReinviteAsync` (`POST api/v1/game-sessions/{sessionId}/players/{membershipId}/reinvite`). It bypasses the duplicate/active guard on purpose (redeeming resumes the active membership, wallet kept) and `/tell`s the fresh link.
+
 ## Deposits And Dealer Financial Actions
 
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`

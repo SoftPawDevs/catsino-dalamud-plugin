@@ -482,6 +482,46 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         SetStatus("The invite tell command was submitted locally; delivery is not confirmed.");
     }
 
+    // Sends an already-active player a fresh invite link (resumes their existing membership on redeem; the
+    // balance is kept). Intentionally bypasses the FindInviteConflict/duplicate guard that CreateInvite uses.
+    public async Task ReinviteAndTellAsync(
+        Guid sessionId,
+        Guid membershipId,
+        string characterName,
+        string homeWorld,
+        CancellationToken cancellationToken = default)
+    {
+        _ = GetSession(sessionId) ?? throw new InvalidOperationException("The session is not available.");
+        var error = DealerInputValidator.ValidateCharacter(characterName, homeWorld);
+        if (error is not null)
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        var invite = await api.ReinviteAsync(sessionId, membershipId, cancellationToken).ConfigureAwait(false);
+        if (invite.SessionId != sessionId ||
+            !string.Equals(invite.CharacterName, characterName, StringComparison.Ordinal) ||
+            !string.Equals(invite.HomeWorld, homeWorld, StringComparison.Ordinal) ||
+            !string.Equals(invite.InviteUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            invite.InviteUrl.OriginalString.Any(char.IsWhiteSpace))
+        {
+            throw new InvalidDataException("The backend returned mismatched or unsafe reinvite data.");
+        }
+
+        rosterStore.UpsertPendingInvite(new PendingInviteDto(
+            invite.InviteId,
+            invite.SessionId,
+            invite.CharacterName,
+            invite.HomeWorld,
+            invite.InitialBalanceGil,
+            DateTimeOffset.UtcNow,
+            invite.ExpiresAt));
+        nextRosterPoll = DateTimeOffset.MinValue;
+        var command = GameChat.BuildTellCommand(characterName, homeWorld, invite.InviteUrl);
+        await framework.Run(() => GameChat.SendCommand(command), cancellationToken).ConfigureAwait(false);
+        SetStatus("The reinvite tell command was submitted locally; delivery is not confirmed.");
+    }
+
     public async Task CancelInviteAsync(Guid sessionId, Guid inviteId, CancellationToken cancellationToken = default)
     {
         await api.CancelInviteAsync(sessionId, inviteId, cancellationToken).ConfigureAwait(false);

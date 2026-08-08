@@ -210,6 +210,16 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
             EndDisabled(rowBusy || cashOut is not null);
         }
 
+        ImGui.SameLine();
+        BeginDisabled(rowBusy);
+        if (ImGui.Button("Reinvite"))
+        {
+            RunPlayer(state, key, () => runtime.ReinviteAndTellAsync(player.SessionId, player.MembershipId, player.CharacterName, player.HomeWorld));
+        }
+
+        EndDisabled(rowBusy);
+        ShowTooltip("Send this player a fresh invite link via /tell. Redeeming it resumes their session; balance is kept.");
+
         if (payoutLocked)
         {
             ImGui.TextDisabled("Payout open");
