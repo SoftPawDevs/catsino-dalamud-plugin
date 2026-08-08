@@ -59,6 +59,7 @@ public sealed record PayoutEventDto(
 
 public sealed record PayoutEventAckDto(Guid OperationId, long SequenceNumber, DateTimeOffset AcknowledgedAt);
 public sealed record RetryCashoutRequest(Guid OperationId, string Reason);
+public sealed record ReconcileOperationRequest(Guid OperationId, string Reason);
 
 public sealed record CancelPayoutOperationDto(Guid OperationId, string Reason);
 

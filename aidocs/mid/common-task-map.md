@@ -49,7 +49,8 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 ## Hub Reconnection And Recovery
 
 - `src/Catsino.Plugin/Backend/PluginHubClient.cs`
-- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs`
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`PollBackendStateAsync`, `SynchronizeAfterHubConnectionAsync`, `RecoverOpenPayoutAsync`, `ReconcileStrandedOperationAsync` — replay-first, then resume or reconcile open payout operations)
+- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`ReconcileOperationAsync`)
 
 ## Protocol Shape And Compatibility
 

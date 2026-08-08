@@ -12,6 +12,8 @@ public interface IPayoutOutbox
     Task<bool> AcknowledgeAsync(Guid operationId, long sequenceNumber, CancellationToken cancellationToken = default);
 
     Task<int> CountAsync(CancellationToken cancellationToken = default);
+
+    Task<bool> HasPendingForOperationAsync(Guid operationId, CancellationToken cancellationToken = default);
 }
 
 public sealed class PersistentPayoutOutbox(string directoryPath) : IPayoutOutbox
@@ -122,6 +124,28 @@ public sealed class PersistentPayoutOutbox(string directoryPath) : IPayoutOutbox
             return Directory.Exists(directoryPath)
                 ? Directory.EnumerateFiles(directoryPath, "*.json").Count()
                 : 0;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    // Durable, restart-surviving check for any not-yet-acknowledged event belonging to an operation.
+    // The recovery/start path consults this so a leg whose progress (e.g. a completed trade) is still
+    // sitting in the durable outbox is never physically re-traded before that progress is delivered.
+    public async Task<bool> HasPendingForOperationAsync(Guid operationId, CancellationToken cancellationToken = default)
+    {
+        if (operationId == Guid.Empty)
+        {
+            throw new ArgumentException("An operation ID is required.", nameof(operationId));
+        }
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return Directory.Exists(directoryPath) &&
+                   Directory.EnumerateFiles(directoryPath, $"*-{operationId:N}.json").Any();
         }
         finally
         {

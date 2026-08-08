@@ -14,6 +14,18 @@ internal static class TestData
         1_000_000,
         DateTimeOffset.UtcNow);
 
+    internal static PayoutOperationDto OpenOperation(PayoutLegDto leg, PayoutOperationState state) => new(
+        leg.OperationId,
+        leg.LegId,
+        leg.SessionId,
+        leg.CharacterName,
+        leg.HomeWorld,
+        leg.AmountGil,
+        state,
+        null,
+        null,
+        DateTimeOffset.UtcNow);
+
     internal static PayoutExecutorReadiness ReadyExecutor() => new(
         true,
         ExecutorInstanceId,

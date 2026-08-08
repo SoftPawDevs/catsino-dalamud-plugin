@@ -3,6 +3,19 @@ using Catsino.Plugin.Contracts;
 
 namespace Catsino.Plugin.Payout;
 
+// Result of trying to resume a backend-open payout operation during recovery.
+public enum PayoutResumeOutcome
+{
+    // Nothing to do (already running elsewhere, undelivered durable progress, or a benign race).
+    Skipped,
+    // Re-attached to a leg the executor was already driving (crash recovery).
+    Reattached,
+    // A never-started leg was started.
+    Started,
+    // The trade physically opened but is no longer driven locally; hand it to backend reconciliation.
+    NeedsReconcile,
+}
+
 public interface IPayoutEventTransport
 {
     Task<PayoutEventAckDto> SendAsync(PayoutEventDto payoutEvent, CancellationToken cancellationToken = default);
@@ -21,6 +34,7 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
     private readonly IPayoutEventTransport transport;
     private readonly Func<bool> backendConnected;
     private readonly Action<string> reportStatus;
+    private readonly Action? onLegSettled;
     private readonly SemaphoreSlim eventGate = new(1, 1);
     private readonly SemaphoreSlim drainGate = new(1, 1);
     private readonly HashSet<Guid> terminalOperations = [];
@@ -36,13 +50,15 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         IPayoutOutbox outbox,
         IPayoutEventTransport transport,
         Func<bool> backendConnected,
-        Action<string> reportStatus)
+        Action<string> reportStatus,
+        Action? onLegSettled = null)
     {
         this.executor = executor;
         this.outbox = outbox;
         this.transport = transport;
         this.backendConnected = backendConnected;
         this.reportStatus = reportStatus;
+        this.onLegSettled = onLegSettled;
         executor.TradeEventReceived += OnTradeEventReceived;
     }
 
@@ -75,6 +91,16 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
             if (terminalOperations.Contains(leg.OperationId))
             {
                 throw new InvalidOperationException("A terminal payout operation is never automatically retried.");
+            }
+
+            // Durable, cross-restart safety: if the outbox still holds any unsent event for this
+            // operation, the trade already progressed locally (at least opened, possibly completed) and
+            // the backend has not been told yet. Restarting would risk a duplicate physical payout, so
+            // refuse until the durable events drain. Unlike terminalOperations/usedOperationIds (memory
+            // only), this survives a plugin restart.
+            if (await outbox.HasPendingForOperationAsync(leg.OperationId, cancellationToken).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException("A payout operation with undelivered durable events is never restarted; its outbox must drain first.");
             }
 
             var readiness = executor.Probe();
@@ -195,6 +221,72 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         }
     }
 
+    // Resumes a payout operation the backend still considers open. Unlike RecoverBackendOperationAsync
+    // (which only re-attaches to a leg the executor is already driving, for crash recovery), this also
+    // STARTS a leg that has never begun locally. That closes the gap where the backend has queued the
+    // next leg of a multi-leg cash-out but the real-time QueuePayoutLeg push was missed (e.g. a hub
+    // reconnect on the leg boundary): the poll and reconnect paths call this so the leg still starts.
+    //
+    // Safety: a physically-opened trade (TradeOpened/TradeLocked) whose executor is gone is NEVER
+    // restarted; it is reported as NeedsReconcile so the caller hands it to backend reconciliation.
+    public async Task<PayoutResumeOutcome> ResumeBackendOperationAsync(PayoutOperationDto backendOperation, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+
+        // Already driven by the executor -> this is a crash-recovery re-attach, not a fresh start.
+        if (executor.GetOperation(backendOperation.OperationId) is not null)
+        {
+            return await RecoverBackendOperationAsync(backendOperation, cancellationToken).ConfigureAwait(false)
+                ? PayoutResumeOutcome.Reattached
+                : PayoutResumeOutcome.Skipped;
+        }
+
+        if (HasActiveOperation)
+        {
+            return PayoutResumeOutcome.Skipped;
+        }
+
+        // The trade physically opened but the executor is no longer driving it (e.g. plugin restart):
+        // the gil may already have moved. Never re-trade; route it to reconciliation.
+        if (backendOperation.State is PayoutOperationState.TradeOpened or PayoutOperationState.TradeLocked)
+        {
+            return PayoutResumeOutcome.NeedsReconcile;
+        }
+
+        // Only a leg that never began trading may be started. (After Fix 3, a Queued/WaitingForPlayer
+        // operation with no durable event provably never moved gil.)
+        if (backendOperation.State is not (PayoutOperationState.Queued or PayoutOperationState.WaitingForPlayer))
+        {
+            return PayoutResumeOutcome.Skipped;
+        }
+
+        // Undelivered durable progress for this operation: do not start; let the outbox drain first.
+        if (await outbox.HasPendingForOperationAsync(backendOperation.OperationId, cancellationToken).ConfigureAwait(false))
+        {
+            return PayoutResumeOutcome.Skipped;
+        }
+
+        var leg = new PayoutLegDto(
+            backendOperation.OperationId,
+            backendOperation.LegId,
+            backendOperation.SessionId,
+            backendOperation.CharacterName,
+            backendOperation.HomeWorld,
+            backendOperation.AmountGil,
+            backendOperation.UpdatedAt);
+        try
+        {
+            await StartBackendLegAsync(leg, cancellationToken).ConfigureAwait(false);
+            return PayoutResumeOutcome.Started;
+        }
+        catch (InvalidOperationException)
+        {
+            // Benign race: the real-time push already started this leg, it just became terminal, or
+            // the executor is busy. Recovery is best-effort, so treat all of these as a safe no-op.
+            return PayoutResumeOutcome.Skipped;
+        }
+    }
+
     public Task ReplayOutboxAsync(CancellationToken cancellationToken = default) => DrainOutboxAsync(cancellationToken);
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -260,6 +352,14 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
 
             // The durable atomic write always precedes any network send.
             await outbox.EnqueueAsync(payoutEvent, cancellationToken).ConfigureAwait(false);
+
+            // Once the TradeOpened event is durable, release the executor to move gil. Before this point
+            // the executor holds off ConfirmTrade so a crash can never leave a completed trade untraced.
+            if (tradeEvent.EventType == PayoutTradeEventType.TradeOpened)
+            {
+                executor.MarkOpenEventPersisted(tradeEvent.OperationId);
+            }
+
             UpdateOperation(execution.Leg, tradeEvent);
 
             if (IsTerminal(tradeEvent))
@@ -286,6 +386,14 @@ public sealed class PayoutCoordinator : IDisposable, IAsyncDisposable
         }
 
         await DrainOutboxAsync(cancellationToken).ConfigureAwait(false);
+
+        // Reaching here means a matched event was persisted for the active leg. If it was terminal,
+        // the leg just settled: signal the host so it can promptly start the batch's next leg without
+        // depending solely on the backend's real-time QueuePayoutLeg push.
+        if (IsTerminal(tradeEvent))
+        {
+            onLegSettled?.Invoke();
+        }
     }
 
     private async Task ObserveBackgroundAsync(Task task)

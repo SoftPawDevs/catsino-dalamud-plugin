@@ -9,22 +9,22 @@
 
 ## Runtime Coordination
 
-- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs`: main runtime state machine and orchestration layer.
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs`: main runtime state machine and orchestration layer; the payout recovery path lives here (`PollBackendStateAsync`/`SynchronizeAfterHubConnectionAsync` replay the outbox first, `RecoverOpenPayoutAsync` resumes or `ReconcileStrandedOperationAsync` reconciles open operations).
 - `src/Catsino.Plugin/Runtime/SessionRosterStore.cs`: roster cache, refresh control, stale-data protection.
 - `src/Catsino.Plugin/Runtime/GameChat.cs`: in-game chat command handling for invites.
 
 ## Backend Integration
 
-- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs`: HTTP surface to backend.
+- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs`: HTTP surface to backend (includes `ReconcileOperationAsync` for handing a stranded, physically-opened payout to backend reconciliation).
 - `src/Catsino.Plugin/Backend/PluginHubClient.cs`: SignalR lifecycle and server-pushed commands.
 - `src/Catsino.Plugin/Backend/FinancialIdempotency.cs`: stable financial idempotency handling.
 
 ## Payout And Trade Execution
 
-- `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`: payout orchestration and backend event transport.
+- `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`: payout orchestration and backend event transport; owns the durable-outbox start guard, `ResumeBackendOperationAsync` (recovery resume/reconcile decision, `PayoutResumeOutcome`), the `onLegSettled` signal, and the `MarkOpenEventPersisted` confirm-release.
 - `src/Catsino.Plugin/Payout/PayoutExecutionPolicy.cs`: readiness and safety checks before execution.
-- `src/Catsino.Plugin/Payout/PersistentPayoutOutbox.cs`: durable event storage and replay.
-- `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`: built-in outgoing payout trade executor.
+- `src/Catsino.Plugin/Payout/PersistentPayoutOutbox.cs`: durable event storage and replay; `HasPendingForOperationAsync` is the cross-restart guard that blocks re-trading a leg with undelivered events.
+- `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`: built-in outgoing payout trade executor; `ConfirmTrade` holds off moving gil until `TradeOpened` is durably persisted.
 - `src/Catsino.Plugin/Payout/PayoutTradeModels.cs`: structured trade observation and executor event models.
 
 ## Security And Config

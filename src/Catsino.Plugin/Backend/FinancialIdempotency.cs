@@ -11,6 +11,11 @@ public static class FinancialIdempotency
     public static Guid ForPayoutAcknowledgment(Guid operationId, long sequenceNumber) =>
         CreateDeterministic("payoutAcknowledgment", operationId, sequenceNumber);
 
+    // A single deterministic reconcile key per operation, so repeated recovery attempts for the same
+    // stuck operation are idempotent on the backend rather than opening new reconciliations.
+    public static Guid ForReconcile(Guid operationId) =>
+        CreateDeterministic("payoutReconcile", operationId);
+
     private static Guid CreateDeterministic(string purpose, Guid operationId, long sequenceNumber)
     {
         if (operationId == Guid.Empty || sequenceNumber <= 0)
@@ -18,9 +23,23 @@ public static class FinancialIdempotency
             throw new ArgumentException("A deterministic financial key requires an operation ID and positive sequence number.");
         }
 
-        var input = Encoding.UTF8.GetBytes($"Catsino.Plugin.v1:{purpose}:{operationId:D}:{sequenceNumber}");
+        return HashToGuid($"Catsino.Plugin.v1:{purpose}:{operationId:D}:{sequenceNumber}");
+    }
+
+    private static Guid CreateDeterministic(string purpose, Guid operationId)
+    {
+        if (operationId == Guid.Empty)
+        {
+            throw new ArgumentException("A deterministic financial key requires an operation ID.");
+        }
+
+        return HashToGuid($"Catsino.Plugin.v1:{purpose}:{operationId:D}");
+    }
+
+    private static Guid HashToGuid(string input)
+    {
         Span<byte> hash = stackalloc byte[32];
-        SHA256.HashData(input, hash);
+        SHA256.HashData(Encoding.UTF8.GetBytes(input), hash);
         var uuid = hash[..16];
         uuid[6] = (byte)((uuid[6] & 0x0f) | 0x80);
         uuid[8] = (byte)((uuid[8] & 0x3f) | 0x80);

@@ -89,10 +89,15 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             outbox,
             new BackendPayoutEventTransport(api),
             () => hub.IsConnected,
-            SetStatus);
+            SetStatus,
+            onLegSettled: () => RunBackground(ResumeStrandedPayoutLegsAsync));
 
         hub.RefreshDealerSessions += () => RunBackground(RefreshSessionsAsync);
-        hub.QueuePayoutLeg += leg => RunBackground(token => payoutCoordinator.StartBackendLegAsync(leg, token));
+        hub.QueuePayoutLeg += leg =>
+        {
+            pluginLog.Information("Catsino received QueuePayoutLeg push for operation {OperationId} leg {LegId}.", leg.OperationId, leg.LegId);
+            RunBackground(token => payoutCoordinator.StartBackendLegAsync(leg, token));
+        };
         hub.CancelPayoutOperation += request => RunBackground(token => payoutCoordinator.CancelFromBackendAsync(request, token));
         hub.SessionClosed += _ => RunBackground(RefreshSessionsAsync);
         hub.DealerAuthorizationRevoked += reason => RunBackground(token => RevokeAuthorizationAsync(reason, token));
@@ -992,6 +997,11 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     private async Task PollBackendStateAsync(CancellationToken cancellationToken)
     {
+        // Replay the durable outbox BEFORE recovery, exactly like SynchronizeAfterHubConnectionAsync,
+        // so the timer poll can never start a leg whose completion is still waiting undelivered in the
+        // outbox (which would double-pay). Combined with the outbox guard in StartBackendLegAsync this
+        // is belt-and-suspenders.
+        await payoutCoordinator.ReplayOutboxAsync(cancellationToken).ConfigureAwait(false);
         await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
         await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -1008,15 +1018,65 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    // Backend-driven fallback that keeps a multi-leg cash-out moving even if a real-time
+    // QueuePayoutLeg push is missed: for every open payout operation the backend reports, either
+    // re-attach to a leg the executor is already driving, START a leg that has not begun locally, or
+    // (for a physically-opened trade that can no longer be driven) hand it to backend reconciliation.
+    // At most one operation becomes active; the rest are settled or skipped.
     private async Task RecoverOpenPayoutAsync(CancellationToken cancellationToken)
     {
         foreach (var operation in OpenPayoutOperations)
         {
-            if (await payoutCoordinator.RecoverBackendOperationAsync(operation, cancellationToken).ConfigureAwait(false))
+            var outcome = await payoutCoordinator.ResumeBackendOperationAsync(operation, cancellationToken).ConfigureAwait(false);
+            switch (outcome)
             {
-                break;
+                case PayoutResumeOutcome.Started:
+                case PayoutResumeOutcome.Reattached:
+                    pluginLog.Information("Catsino {Outcome} payout operation {OperationId} leg {LegId} (state {State}) from backend recovery.",
+                        outcome, operation.OperationId, operation.LegId, operation.State);
+                    return;
+                case PayoutResumeOutcome.NeedsReconcile:
+                    await ReconcileStrandedOperationAsync(operation, cancellationToken).ConfigureAwait(false);
+                    break;
+                case PayoutResumeOutcome.Skipped:
+                    break;
             }
         }
+    }
+
+    // A physically-opened payout trade whose executor is gone (e.g. after a plugin restart) must never
+    // be re-traded. Hand it to the backend, which releases the definitely-untraded remainder and flags
+    // the player for in-game verification of the uncertain leg.
+    private async Task ReconcileStrandedOperationAsync(PayoutOperationDto operation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await api.ReconcileOperationAsync(
+                operation.OperationId,
+                "Plugin could not confirm the trade outcome after recovery; releasing for in-game verification.",
+                FinancialIdempotency.ForReconcile(operation.OperationId),
+                cancellationToken).ConfigureAwait(false);
+            pluginLog.Warning("Catsino handed payout operation {OperationId} leg {LegId} (state {State}) to backend reconciliation.",
+                operation.OperationId, operation.LegId, operation.State);
+            SetStatus($"A payout could not be auto-resumed and was sent for reconciliation. Verify in-game whether {operation.CharacterName}@{operation.HomeWorld} received the gil.");
+        }
+        catch (Exception exception)
+        {
+            pluginLog.Warning("Catsino reconciliation request failed: {Message}", SecretRedactor.Redact(exception.Message));
+        }
+    }
+
+    // Runs after a payout leg settles: refresh the backend's open payout operations and start the
+    // batch's next leg promptly, so the next trade does not wait on the periodic poll or a push.
+    private async Task ResumeStrandedPayoutLegsAsync(CancellationToken cancellationToken)
+    {
+        if (!api.IsAuthorized)
+        {
+            return;
+        }
+
+        await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
+        await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task RecoverHubConnectionAsync(CancellationToken cancellationToken)

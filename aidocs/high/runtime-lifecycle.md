@@ -33,13 +33,20 @@
 
 ## Payout Workflow
 
-1. Backend hub sends a payout leg.
-2. `PayoutCoordinator` validates readiness and starts the built-in trade executor.
-3. Observed payout events are written to the durable outbox first.
-4. Events are sent to the backend and removed only after acknowledgement.
+1. Backend hub sends a payout leg (`QueuePayoutLeg`).
+2. `PayoutCoordinator.StartBackendLegAsync` validates readiness/policy and — unless the durable outbox still
+   holds an unsent event for that operation — starts the built-in trade executor.
+3. The executor does not move gil until its `TradeOpened` event is durably persisted (confirm barrier).
+4. Observed payout events are written to the durable outbox first.
+5. Events are sent to the backend and removed only after acknowledgement.
+6. On the current leg settling, the next leg starts (via the push, the poll, or the `onLegSettled` callback).
 
 ## Recovery And Shutdown
 
 - Hub reconnect and terminal disconnect recovery are coordinated in `CatsinoRuntime` and `PluginHubClient`.
-- Outbox replay and open payout recovery happen after reconnect.
+- `SynchronizeAfterHubConnectionAsync` (reconnect) and `PollBackendStateAsync` (timer) both **replay the
+  durable outbox first**, then run `RecoverOpenPayoutAsync` over `GET /payout-operations/open`.
+- `RecoverOpenPayoutAsync` re-attaches to a leg the executor is already driving, starts a never-begun
+  `Queued` / `WaitingForPlayer` leg, or — for a physically-opened leg the executor can no longer drive —
+  calls the backend reconcile endpoint (`ReconcileStrandedOperationAsync`) instead of re-trading it.
 - Plugin disposal unregisters UI hooks, command handlers, and async runtime resources.

@@ -35,7 +35,8 @@
     { "operation": "reportPayoutEvent", "method": "POST", "path": "/api/v1/payout-events", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "PayoutEventDto", "responseDto": "PayoutEventAckDto" },
     { "operation": "acknowledgePayoutEvent", "method": "POST", "path": "/api/v1/payout-events/{operationId}/{sequenceNumber}/ack", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "PayoutEventAckDto", "responseDto": null },
     { "operation": "listOpenPayoutOperations", "method": "GET", "path": "/api/v1/payout-operations/open", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "PayoutOperationDto[]" },
-    { "operation": "retryCashout", "method": "POST", "path": "/api/v1/cashouts/{operationId}/retry", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "RetryCashoutRequest", "responseDto": "PayoutOperationDto" }
+    { "operation": "retryCashout", "method": "POST", "path": "/api/v1/cashouts/{operationId}/retry", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "RetryCashoutRequest", "responseDto": "PayoutOperationDto" },
+    { "operation": "reconcilePayoutOperation", "method": "POST", "path": "/api/v1/payout-operations/{operationId}/reconcile", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "ReconcileOperationRequest", "responseDto": "CashOutResponse" }
   ],
   "enumDefinitions": {
     "GameSessionState": ["created", "open", "closing", "closed"],
@@ -89,6 +90,7 @@
     "PayoutEventDto": { "operationId": "30000000-0000-0000-0000-000000000003", "legId": "31000000-0000-0000-0000-000000000003", "sequenceNumber": 7, "pluginInstanceId": "32000000-0000-0000-0000-000000000003", "eventType": "tradeFailed", "characterName": "Exact Player", "homeWorld": "Ragnarok", "amountGil": 1000, "occurredAt": "2026-08-05T12:10:00+00:00", "errorCode": "tradeFailed", "errorMessage": "Start a new cash out for the remaining amount.", "isAmbiguous": true },
     "PayoutEventAckDto": { "operationId": "30000000-0000-0000-0000-000000000003", "sequenceNumber": 7, "acknowledgedAt": "2026-08-05T12:10:01+00:00" },
     "RetryCashoutRequest": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "dealerTriggered" },
+    "ReconcileOperationRequest": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "recoveryUnconfirmed" },
     "CancelPayoutOperationDto": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "backendCancelled" }
   },
   "hub": {

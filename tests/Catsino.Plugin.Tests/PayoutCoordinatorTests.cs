@@ -81,6 +81,156 @@ public sealed class PayoutCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task ResumeStartsQueuedNextLegWhenTheRealtimePushIsMissed()
+    {
+        // The core fix: after leg 1 completes, the backend has queued leg 2 but its QueuePayoutLeg
+        // push never arrives. The backend-recovery path must still START leg 2 (not just re-attach).
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+        var firstLeg = TestData.Leg();
+
+        await coordinator.StartBackendLegAsync(firstLeg);
+        fakeExecutor.Emit(TestData.TradeEvent(firstLeg, PayoutTradeEventType.TradeCompleted, ambiguous: false));
+        await WaitUntilAsync(() => !coordinator.HasActiveOperation);
+
+        var secondLeg = TestData.Leg();
+        var resumed = await coordinator.ResumeBackendOperationAsync(TestData.OpenOperation(secondLeg, PayoutOperationState.Queued));
+
+        Assert.Equal(PayoutResumeOutcome.Started, resumed);
+        Assert.Equal(2, fakeExecutor.StartCount);
+        Assert.Equal(secondLeg.OperationId, coordinator.ActiveOperation?.OperationId);
+    }
+
+    [Fact]
+    public async Task ResumeIsNoOpWhileALegIsStillActive()
+    {
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+
+        await coordinator.StartBackendLegAsync(TestData.Leg());
+        var resumed = await coordinator.ResumeBackendOperationAsync(TestData.OpenOperation(TestData.Leg(), PayoutOperationState.Queued));
+
+        Assert.Equal(PayoutResumeOutcome.Skipped, resumed);
+        Assert.Equal(1, fakeExecutor.StartCount);
+    }
+
+    [Fact]
+    public async Task ResumeHandsAPhysicallyOpenedTradeToReconciliation()
+    {
+        // A trade that physically opened (gil may have moved) but is no longer driven locally must never
+        // be restarted; recovery reports NeedsReconcile so the caller routes it to backend reconciliation.
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+
+        var outcome = await coordinator.ResumeBackendOperationAsync(TestData.OpenOperation(TestData.Leg(), PayoutOperationState.TradeLocked));
+
+        Assert.Equal(PayoutResumeOutcome.NeedsReconcile, outcome);
+        Assert.Equal(0, fakeExecutor.StartCount);
+    }
+
+    [Fact]
+    public async Task ResumeNeverRestartsAnAlreadySettledLeg()
+    {
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+        var leg = TestData.Leg();
+
+        await coordinator.StartBackendLegAsync(leg);
+        fakeExecutor.Emit(TestData.TradeEvent(leg, PayoutTradeEventType.TradeFailed, ambiguous: false));
+        await WaitUntilAsync(() => coordinator.ActiveOperation?.State == PayoutOperationState.Failed);
+
+        // The executor is idle again, but this operation already reached a terminal outcome; recovery
+        // must never re-trade it even if the backend still momentarily reports it as open.
+        fakeExecutor.GoIdleWithoutEvent();
+        var resumed = await coordinator.ResumeBackendOperationAsync(TestData.OpenOperation(leg, PayoutOperationState.Queued));
+
+        Assert.Equal(PayoutResumeOutcome.Skipped, resumed);
+        Assert.Equal(1, fakeExecutor.StartCount);
+    }
+
+    [Fact]
+    public async Task ResumeDoesNotDoubleStartALegTheRealtimePushAlreadyStarted()
+    {
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+        var firstLeg = TestData.Leg();
+
+        await coordinator.StartBackendLegAsync(firstLeg);
+        fakeExecutor.Emit(TestData.TradeEvent(firstLeg, PayoutTradeEventType.TradeCompleted, ambiguous: false));
+        await WaitUntilAsync(() => !coordinator.HasActiveOperation);
+
+        // The real-time push wins the race and starts leg 2.
+        var secondLeg = TestData.Leg();
+        await coordinator.StartBackendLegAsync(secondLeg);
+        Assert.Equal(2, fakeExecutor.StartCount);
+
+        // The recovery path then also observes leg 2 as open: it must be a safe no-op, not a re-start.
+        var resumed = await coordinator.ResumeBackendOperationAsync(TestData.OpenOperation(secondLeg, PayoutOperationState.WaitingForPlayer));
+
+        Assert.Equal(PayoutResumeOutcome.Skipped, resumed);
+        Assert.Equal(2, fakeExecutor.StartCount);
+        Assert.Equal(secondLeg.OperationId, coordinator.ActiveOperation?.OperationId);
+    }
+
+    [Fact]
+    public async Task RefusesToStartALegWhoseDurableEventsAreStillUndelivered()
+    {
+        // Cross-restart double-payment guard: a leg whose completion sits in the durable outbox (the
+        // backend has not been told) must never be physically re-traded, even though the in-memory
+        // guards are empty after a restart.
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        var leg = TestData.Leg();
+        await outbox.EnqueueAsync(new PayoutEventDto(leg.OperationId, leg.LegId, 3, Guid.NewGuid(),
+            PayoutEventType.TradeCompleted, leg.CharacterName, leg.HomeWorld, leg.AmountGil,
+            DateTimeOffset.UtcNow, null, null, false));
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.StartBackendLegAsync(leg));
+        var resumed = await coordinator.ResumeBackendOperationAsync(TestData.OpenOperation(leg, PayoutOperationState.Queued));
+
+        Assert.Equal(PayoutResumeOutcome.Skipped, resumed);
+        Assert.Equal(0, fakeExecutor.StartCount);
+    }
+
+    [Fact]
+    public async Task HasPendingForOperationMatchesOnlyThatOperation()
+    {
+        var outbox = new PersistentPayoutOutbox(directory);
+        var leg = TestData.Leg();
+        await outbox.EnqueueAsync(new PayoutEventDto(leg.OperationId, leg.LegId, 1, Guid.NewGuid(),
+            PayoutEventType.TradeOpened, leg.CharacterName, leg.HomeWorld, leg.AmountGil,
+            DateTimeOffset.UtcNow, null, null, false));
+
+        Assert.True(await outbox.HasPendingForOperationAsync(leg.OperationId));
+        Assert.False(await outbox.HasPendingForOperationAsync(Guid.NewGuid()));
+
+        Assert.True(await outbox.AcknowledgeAsync(leg.OperationId, 1));
+        Assert.False(await outbox.HasPendingForOperationAsync(leg.OperationId));
+    }
+
+    [Fact]
+    public async Task PersistingTradeOpenedReleasesTheExecutorToConfirm()
+    {
+        // Fix 3 wiring: the executor is told to move gil only AFTER the TradeOpened event is durably
+        // persisted. (The executor-internal ConfirmTrade gate is exercised in-game.)
+        var fakeExecutor = new FakeExecutor();
+        var outbox = new PersistentPayoutOutbox(directory);
+        using var coordinator = new PayoutCoordinator(fakeExecutor, outbox, new FakeTransport(), () => true, _ => { });
+        var leg = TestData.Leg();
+        await coordinator.StartBackendLegAsync(leg);
+        Assert.Equal(Guid.Empty, fakeExecutor.OpenPersistedOperationId);
+
+        fakeExecutor.Emit(TestData.TradeEvent(leg, PayoutTradeEventType.TradeOpened, ambiguous: false));
+        await WaitUntilAsync(() => fakeExecutor.OpenPersistedOperationId == leg.OperationId);
+    }
+
+    [Fact]
     public async Task AmbiguousOutcomeIsTreatedAsFailedAndWaitsForExactAck()
     {
         var fakeExecutor = new FakeExecutor();
@@ -181,6 +331,10 @@ public sealed class PayoutCoordinatorTests : IDisposable
         public void GoIdleWithoutEvent() => ActiveOperation = null;
 
         public PayoutTradeOperation? GetOperation(Guid operationId) => ActiveOperation?.OperationId == operationId ? ActiveOperation : null;
+
+        public Guid OpenPersistedOperationId { get; private set; }
+
+        public void MarkOpenEventPersisted(Guid operationId) => OpenPersistedOperationId = operationId;
 
         public void Emit(PayoutTradeEvent tradeEvent)
         {

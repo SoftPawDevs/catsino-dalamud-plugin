@@ -246,6 +246,14 @@ public sealed class CatsinoApiClient : IDisposable
     public Task<PayoutOperationDto> RetryCashoutAsync(RetryCashoutRequest request, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<PayoutOperationDto>(HttpMethod.Post, $"api/v1/cashouts/{request.OperationId:D}/retry", request, idempotencyKey, cancellationToken);
 
+    public Task<CashOutResponse> ReconcileOperationAsync(Guid operationId, string reason, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<CashOutResponse>(
+            HttpMethod.Post,
+            $"api/v1/payout-operations/{operationId:D}/reconcile",
+            new ReconcileOperationRequest(operationId, reason),
+            idempotencyKey,
+            cancellationToken);
+
     public async Task EnsureFreshAccessTokenAsync(CancellationToken cancellationToken = default)
     {
         if (authorization is not null && authorization.AccessTokenExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1))
@@ -477,5 +485,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.3.5";
+    public const string Current = "1.3.6";
 }

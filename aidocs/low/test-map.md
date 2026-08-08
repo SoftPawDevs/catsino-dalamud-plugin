@@ -18,7 +18,9 @@
 
 - `tests/Catsino.Plugin.Tests/PersistentPayoutOutboxTests.cs`: outbox persistence and replay safety.
 - `tests/Catsino.Plugin.Tests/PayoutExecutionPolicyTests.cs`: payout gating rules.
-- `tests/Catsino.Plugin.Tests/PayoutCoordinatorTests.cs`: payout orchestration.
+- `tests/Catsino.Plugin.Tests/PayoutCoordinatorTests.cs`: payout orchestration, recovery-start
+  (`ResumeBackendOperationAsync`), the durable-outbox start guard (refuses to re-trade a leg with unsent
+  events), the `TradeOpened`-persisted confirm signal, and `NeedsReconcile` routing.
 
 ## Trade Execution
 

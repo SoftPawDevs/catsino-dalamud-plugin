@@ -38,6 +38,8 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     private readonly Guid executorInstanceId = Guid.NewGuid();
     private readonly HashSet<Guid> usedOperationIds = [];
     private readonly TaskManager taskManager;
+    private readonly object openPersistLock = new();
+    private Guid openPersistedOperationId;
 
     private PayoutTradeOperation? operation;
     private long sequenceNumber;
@@ -135,6 +137,24 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     }
 
     public PayoutTradeOperation? GetOperation(Guid operationId) => operation?.OperationId == operationId ? operation : null;
+
+    // Called from the coordinator thread once the TradeOpened event is durably persisted. ConfirmTrade
+    // (which is where gil actually moves) refuses to proceed until this matches the current operation.
+    public void MarkOpenEventPersisted(Guid operationId)
+    {
+        lock (openPersistLock)
+        {
+            openPersistedOperationId = operationId;
+        }
+    }
+
+    private bool IsOpenEventPersisted(Guid operationId)
+    {
+        lock (openPersistLock)
+        {
+            return openPersistedOperationId == operationId;
+        }
+    }
 
     public void Dispose()
     {
@@ -319,6 +339,19 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
     // Trade addon disappears (trade completed or cancelled).
     private bool ConfirmTrade()
     {
+        var current = operation;
+        if (current is null)
+        {
+            return true;
+        }
+
+        // Never move gil until the TradeOpened event is durably recorded. If a crash struck between the
+        // confirm and any durable write, recovery could otherwise re-run a completed physical trade.
+        if (!IsOpenEventPersisted(current.OperationId))
+        {
+            return false;
+        }
+
         if (TryGetAddonByName<AtkUnitBase>("Trade", out var tradeAddon) && IsAddonReady(tradeAddon))
         {
             var tradeButton = (AtkComponentButton*)tradeAddon->UldManager.NodeList[3]->GetComponent();
@@ -528,6 +561,10 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
         confirmationAccepted = false;
         sequenceQueued = false;
         cancelRequested = false;
+        lock (openPersistLock)
+        {
+            openPersistedOperationId = Guid.Empty;
+        }
     }
 
     private static bool IsExactCharacterName(string value)
