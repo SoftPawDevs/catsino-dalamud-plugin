@@ -23,7 +23,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private readonly CatsinoApiClient api;
     private readonly PluginHubClient hub;
     private readonly IPayoutOutbox outbox;
-    private readonly PayoutCoordinator payoutCoordinator;
+    private readonly PayoutBatchCoordinator batchCoordinator;
+    private long dealerRefreshTicket;
     private readonly LogicalIdempotencyKeys financialKeys = new();
     private readonly SessionRosterStore rosterStore = new();
     private readonly ConcurrentDictionary<SessionPlayerKey, BalanceAdjustmentSubmission> balanceAdjustments = new();
@@ -84,21 +85,16 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         var apiBaseUri = new Uri(configuration.ApiBaseUrl, UriKind.Absolute);
         api = new CatsinoApiClient(apiBaseUri, credentialStore, () => Character, configuration.DeviceId);
         hub = new PluginHubClient(apiBaseUri, api);
-        payoutCoordinator = new PayoutCoordinator(
+        batchCoordinator = new PayoutBatchCoordinator(
             payoutExecutor,
-            outbox,
-            new BackendPayoutEventTransport(api),
+            new PersistentCashOutBatchStore(Path.Combine(configDirectory, "cashout-batches")),
+            new BackendPayoutSettlementTransport(api),
             () => hub.IsConnected,
-            SetStatus,
-            onLegSettled: () => RunBackground(ResumeStrandedPayoutLegsAsync));
+            SetStatus);
 
-        hub.RefreshDealerSessions += () => RunBackground(RefreshSessionsAsync);
-        hub.QueuePayoutLeg += leg =>
-        {
-            pluginLog.Information("Catsino received QueuePayoutLeg push for operation {OperationId} leg {LegId}.", leg.OperationId, leg.LegId);
-            RunBackground(token => payoutCoordinator.StartBackendLegAsync(leg, token));
-        };
-        hub.CancelPayoutOperation += request => RunBackground(token => payoutCoordinator.CancelFromBackendAsync(request, token));
+        // The dealer roster refresh is coalesced (debounced) so a burst of pushes — e.g. rapid Plinko
+        // drops each nudging the dealer — collapses into at most one roster re-fetch per window.
+        hub.RefreshDealerSessions += () => RunBackground(RequestDealerRefreshAsync);
         hub.SessionClosed += _ => RunBackground(RefreshSessionsAsync);
         hub.DealerAuthorizationRevoked += reason => RunBackground(token => RevokeAuthorizationAsync(reason, token));
         hub.ReconnectRequired += reason => RunBackground(token => ReconnectHubAsync(reason, token));
@@ -128,7 +124,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     public IReadOnlyList<PayoutOperationDto> OpenPayoutOperations { get; private set; } = [];
 
-    public PayoutOperationDto? ActivePayout => payoutCoordinator.ActiveOperation;
+    public PayoutOperationDto? ActivePayout => batchCoordinator.ActiveOperation;
 
     public SessionActionDraftStore ActionDrafts { get; } = new();
 
@@ -584,10 +580,12 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             throw new InvalidOperationException("Explicitly confirm the zero net payout before continuing.");
         }
 
+        var rosterPlayer = RequireRosterPlayer(player);
         submission.MarkSending();
+        CashOutResponse? response;
         try
         {
-            await api.StartPlayerCashOutAsync(
+            response = await api.StartPlayerCashOutAsync(
                 player.SessionId,
                 player.MembershipId,
                 new DealerCashOutRequest(
@@ -609,7 +607,25 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         submission.MarkSucceeded();
         cashOuts.TryRemove(player, out _);
         ActionDrafts.SetNetZeroConfirmation(player, false);
-        SetStatus("The backend accepted the full-token cash out.");
+
+        // The backend returns the full leg plan; the plugin now OWNS the execution: it runs every leg
+        // locally and sequentially and reports the whole batch once via the settle endpoint. Zero-net
+        // cash-outs are already settled server-side (no gil trade), so there is nothing to run.
+        var tradeLegs = response?.Legs
+            .Where(x => x.Net > 0 && !string.Equals(x.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            .Select(x => new CashOutBatchLegPlan(x.Number, x.Net))
+            .ToList() ?? [];
+        if (response is not null && tradeLegs.Count > 0)
+        {
+            var plan = new CashOutBatchPlan(response.Id, player.SessionId, rosterPlayer.CharacterName, rosterPlayer.HomeWorld, tradeLegs);
+            await batchCoordinator.StartBatchAsync(plan, cancellationToken).ConfigureAwait(false);
+            SetStatus($"Paying out {rosterPlayer.CharacterName}@{rosterPlayer.HomeWorld} across {tradeLegs.Count} trade(s).");
+        }
+        else
+        {
+            SetStatus("The cash out settled with no gil trade required.");
+        }
+
         await TryRefreshRosterAfterMutationAsync(player.SessionId, cancellationToken).ConfigureAwait(false);
     }
 
@@ -662,7 +678,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             // Plugin disposal must continue even if the backend is unavailable.
         }
 
-        await payoutCoordinator.DisposeAsync().ConfigureAwait(false);
+        await batchCoordinator.DisposeAsync().ConfigureAwait(false);
         await hub.DisposeAsync().ConfigureAwait(false);
         api.Dispose();
         payoutExecutor.Dispose();
@@ -724,13 +740,11 @@ public sealed class CatsinoRuntime : IAsyncDisposable
                 !string.Equals(previous.HomeWorld, current.HomeWorld, StringComparison.Ordinal)))
             {
                 InvalidateAuthorizationEpoch();
-                if (payoutCoordinator.ActiveOperation is { } activeOperation)
+                if (batchCoordinator.HasActiveBatch)
                 {
                     try
                     {
-                        await payoutCoordinator.CancelFromBackendAsync(
-                            new CancelPayoutOperationDto(activeOperation.OperationId, "dealerCharacterChanged"),
-                            cancellationToken).ConfigureAwait(false);
+                        await batchCoordinator.AbortActiveAsync(cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception exception)
                     {
@@ -787,13 +801,11 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private async Task RevokeAuthorizationAsync(string reason, CancellationToken cancellationToken)
     {
         InvalidateAuthorizationEpoch();
-        if (payoutCoordinator.ActiveOperation is { } activeOperation)
+        if (batchCoordinator.HasActiveBatch)
         {
             try
             {
-                await payoutCoordinator.CancelFromBackendAsync(
-                    new CancelPayoutOperationDto(activeOperation.OperationId, "authorizationRevoked"),
-                    cancellationToken).ConfigureAwait(false);
+                await batchCoordinator.AbortActiveAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -839,13 +851,13 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         var status = new PayoutExecutorStatusDto(
             readiness.ExecutorInstanceId,
             readiness.IsReady,
-            payoutCoordinator.HasActiveOperation,
-            payoutCoordinator.ActiveOperation?.OperationId,
+            batchCoordinator.HasActiveBatch,
+            batchCoordinator.ActiveOperation?.OperationId,
             readiness.Status,
             DateTimeOffset.UtcNow);
         await api.ReportPayoutExecutorStatusAsync(status, cancellationToken).ConfigureAwait(false);
         await hub.ReportPayoutExecutorStatusAsync(status).ConfigureAwait(false);
-        if (payoutCoordinator.ActiveOperation is { } operation)
+        if (batchCoordinator.ActiveOperation is { } operation)
         {
             await hub.ReportOutgoingTradeStatusAsync(operation).ConfigureAwait(false);
         }
@@ -997,13 +1009,10 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     private async Task PollBackendStateAsync(CancellationToken cancellationToken)
     {
-        // Replay the durable outbox BEFORE recovery, exactly like SynchronizeAfterHubConnectionAsync,
-        // so the timer poll can never start a leg whose completion is still waiting undelivered in the
-        // outbox (which would double-pay). Combined with the outbox guard in StartBackendLegAsync this
-        // is belt-and-suspenders.
-        await payoutCoordinator.ReplayOutboxAsync(cancellationToken).ConfigureAwait(false);
         await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
-        await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
+        // Resume any durable cash-out batch (finish pending legs, quarantine a leg caught mid-trade, or
+        // retry a settlement). The batch coordinator owns crash-safety; this is the periodic safety net.
+        await batchCoordinator.ResumeAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task SynchronizeAfterHubConnectionAsync(CancellationToken cancellationToken)
@@ -1013,70 +1022,31 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             return;
         }
 
-        await payoutCoordinator.ReplayOutboxAsync(cancellationToken).ConfigureAwait(false);
         await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
-        await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
+        await batchCoordinator.ResumeAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    // Backend-driven fallback that keeps a multi-leg cash-out moving even if a real-time
-    // QueuePayoutLeg push is missed: for every open payout operation the backend reports, either
-    // re-attach to a leg the executor is already driving, START a leg that has not begun locally, or
-    // (for a physically-opened trade that can no longer be driven) hand it to backend reconciliation.
-    // At most one operation becomes active; the rest are settled or skipped.
-    private async Task RecoverOpenPayoutAsync(CancellationToken cancellationToken)
+    // Coalesces dealer roster-refresh pushes: each push waits out a short window and only the latest one
+    // performs the re-fetch, so a burst (e.g. rapid Plinko drops nudging the dealer) collapses into a
+    // single roster refresh instead of a re-fetch storm.
+    private async Task RequestDealerRefreshAsync(CancellationToken cancellationToken)
     {
-        foreach (var operation in OpenPayoutOperations)
-        {
-            var outcome = await payoutCoordinator.ResumeBackendOperationAsync(operation, cancellationToken).ConfigureAwait(false);
-            switch (outcome)
-            {
-                case PayoutResumeOutcome.Started:
-                case PayoutResumeOutcome.Reattached:
-                    pluginLog.Information("Catsino {Outcome} payout operation {OperationId} leg {LegId} (state {State}) from backend recovery.",
-                        outcome, operation.OperationId, operation.LegId, operation.State);
-                    return;
-                case PayoutResumeOutcome.NeedsReconcile:
-                    await ReconcileStrandedOperationAsync(operation, cancellationToken).ConfigureAwait(false);
-                    break;
-                case PayoutResumeOutcome.Skipped:
-                    break;
-            }
-        }
-    }
-
-    // A physically-opened payout trade whose executor is gone (e.g. after a plugin restart) must never
-    // be re-traded. Hand it to the backend, which releases the definitely-untraded remainder and flags
-    // the player for in-game verification of the uncertain leg.
-    private async Task ReconcileStrandedOperationAsync(PayoutOperationDto operation, CancellationToken cancellationToken)
-    {
+        var ticket = Interlocked.Increment(ref dealerRefreshTicket);
         try
         {
-            await api.ReconcileOperationAsync(
-                operation.OperationId,
-                "Plugin could not confirm the trade outcome after recovery; releasing for in-game verification.",
-                FinancialIdempotency.ForReconcile(operation.OperationId),
-                cancellationToken).ConfigureAwait(false);
-            pluginLog.Warning("Catsino handed payout operation {OperationId} leg {LegId} (state {State}) to backend reconciliation.",
-                operation.OperationId, operation.LegId, operation.State);
-            SetStatus($"A payout could not be auto-resumed and was sent for reconciliation. Verify in-game whether {operation.CharacterName}@{operation.HomeWorld} received the gil.");
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception)
-        {
-            pluginLog.Warning("Catsino reconciliation request failed: {Message}", SecretRedactor.Redact(exception.Message));
-        }
-    }
-
-    // Runs after a payout leg settles: refresh the backend's open payout operations and start the
-    // batch's next leg promptly, so the next trade does not wait on the periodic poll or a push.
-    private async Task ResumeStrandedPayoutLegsAsync(CancellationToken cancellationToken)
-    {
-        if (!api.IsAuthorized)
+        catch (OperationCanceledException)
         {
             return;
         }
 
-        await RefreshSessionsCoreAsync(false, cancellationToken).ConfigureAwait(false);
-        await RecoverOpenPayoutAsync(cancellationToken).ConfigureAwait(false);
+        if (Interlocked.Read(ref dealerRefreshTicket) != ticket)
+        {
+            return;
+        }
+
+        await RefreshSessionsAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task RecoverHubConnectionAsync(CancellationToken cancellationToken)
@@ -1152,7 +1122,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     {
         RunBackground(async token =>
         {
-            if (payoutCoordinator.ActiveOperation is null)
+            if (!batchCoordinator.HasActiveBatch)
             {
                 SetStatus("There is no active payout to abort.");
                 return;
@@ -1160,7 +1130,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
             try
             {
-                var aborted = await payoutCoordinator.AbortActiveOperationAsync(token).ConfigureAwait(false);
+                var aborted = await batchCoordinator.AbortActiveAsync(token).ConfigureAwait(false);
                 SetStatus(aborted
                     ? "Aborted the payout. The player's reserved gil is being returned by the backend."
                     : "There was no active payout to abort.");

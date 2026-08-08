@@ -31,22 +31,25 @@
 3. The plugin sends the returned message through the native `/tell` path.
 4. Pending invites are tracked in runtime state until refreshed or cancelled.
 
-## Payout Workflow
+## Payout Workflow (client-driven cash-out)
 
-1. Backend hub sends a payout leg (`QueuePayoutLeg`).
-2. `PayoutCoordinator.StartBackendLegAsync` validates readiness/policy and — unless the durable outbox still
-   holds an unsent event for that operation — starts the built-in trade executor.
-3. The executor does not move gil until its `TradeOpened` event is durably persisted (confirm barrier).
-4. Observed payout events are written to the durable outbox first.
-5. Events are sent to the backend and removed only after acknowledgement.
-6. On the current leg settling, the next leg starts (via the push, the poll, or the `onLegSettled` callback).
+1. The dealer submits a cash-out; `POST /cashouts` returns the full leg plan (`CashOutResponse`).
+2. `CatsinoRuntime.SubmitCashOutAsync` builds a `CashOutBatchPlan` and calls `PayoutBatchCoordinator.StartBatchAsync`,
+   which persists the plan durably before any trade.
+3. Legs run one at a time through the built-in trade executor; the executor does not move gil until the leg is
+   durably marked `Trading` (confirm barrier via `MarkOpenEventPersisted`).
+4. On each `TradeCompleted` the coordinator durably records the leg and starts the next pending leg — no backend
+   push is involved.
+5. When all legs finish (or one fails/is ambiguous) the batch is reported once via `POST /cashouts/{id}/settle`,
+   retried durably until acknowledged, then the durable batch is deleted.
 
 ## Recovery And Shutdown
 
 - Hub reconnect and terminal disconnect recovery are coordinated in `CatsinoRuntime` and `PluginHubClient`.
-- `SynchronizeAfterHubConnectionAsync` (reconnect) and `PollBackendStateAsync` (timer) both **replay the
-  durable outbox first**, then run `RecoverOpenPayoutAsync` over `GET /payout-operations/open`.
-- `RecoverOpenPayoutAsync` re-attaches to a leg the executor is already driving, starts a never-begun
-  `Queued` / `WaitingForPlayer` leg, or — for a physically-opened leg the executor can no longer drive —
-  calls the backend reconcile endpoint (`ReconcileStrandedOperationAsync`) instead of re-trading it.
+- `SynchronizeAfterHubConnectionAsync` (reconnect) and `PollBackendStateAsync` (timer) call
+  `PayoutBatchCoordinator.ResumeAsync`, which reloads the durable batch and finishes pending legs, quarantines a
+  leg caught mid-trade (as `ambiguous`, never re-traded), or retries a pending settlement. `GET /cashouts/open`
+  is a backend cross-check.
+- The dealer roster refresh (`RefreshDealerSessions`) is debounced (`RequestDealerRefreshAsync`) so bursts of
+  pushes — e.g. rapid Plinko drops — collapse into a single roster re-fetch.
 - Plugin disposal unregisters UI hooks, command handlers, and async runtime resources.

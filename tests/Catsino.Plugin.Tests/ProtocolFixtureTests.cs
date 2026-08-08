@@ -13,10 +13,10 @@ public sealed class ProtocolFixtureTests
         var root = document.RootElement;
         Assert.Equal("1.3.0", root.GetProperty("contractVersion").GetString());
         var routes = root.GetProperty("routes").EnumerateArray().ToArray();
-        Assert.Equal(28, routes.Length);
+        Assert.Equal(30, routes.Length);
 
         var financialRoutes = routes.Where(route => route.GetProperty("financialMutation").GetBoolean()).ToArray();
-        Assert.Equal(11, financialRoutes.Length);
+        Assert.Equal(12, financialRoutes.Length);
         Assert.All(financialRoutes, route => Assert.True(route.GetProperty("idempotencyKeyRequired").GetBoolean()));
         var inviteRoute = Assert.Single(routes, route => route.GetProperty("operation").GetString() == "createInvite");
         Assert.False(inviteRoute.GetProperty("financialMutation").GetBoolean());

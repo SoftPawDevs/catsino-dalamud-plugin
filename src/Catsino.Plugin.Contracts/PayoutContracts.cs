@@ -60,6 +60,12 @@ public sealed record PayoutEventDto(
 public sealed record PayoutEventAckDto(Guid OperationId, long SequenceNumber, DateTimeOffset AcknowledgedAt);
 public sealed record RetryCashoutRequest(Guid OperationId, string Reason);
 public sealed record ReconcileOperationRequest(Guid OperationId, string Reason);
+// Client-driven cash-out: the plugin runs the whole batch locally and reports every leg's outcome once.
+// Outcome is "completed" | "failed" | "ambiguous". The backend books its own stored amounts.
+public sealed record CashOutLegOutcome(int Number, string Outcome, string? ErrorCode);
+public sealed record CashOutSettlementRequest(Guid CashOutId, IReadOnlyList<CashOutLegOutcome> Legs);
+public sealed record OpenCashOutLegDto(int Number, long Gross, long Fee, long Net, string Status);
+public sealed record OpenCashOutDto(Guid CashOutId, Guid SessionId, string CharacterName, string HomeWorld, IReadOnlyList<OpenCashOutLegDto> Legs);
 
 public sealed record CancelPayoutOperationDto(Guid OperationId, string Reason);
 

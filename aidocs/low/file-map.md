@@ -21,7 +21,9 @@
 
 ## Payout And Trade Execution
 
-- `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`: payout orchestration and backend event transport; owns the durable-outbox start guard, `ResumeBackendOperationAsync` (recovery resume/reconcile decision, `PayoutResumeOutcome`), the `onLegSettled` signal, and the `MarkOpenEventPersisted` confirm-release.
+- `src/Catsino.Plugin/Payout/PayoutBatchCoordinator.cs`: client-driven cash-out orchestration — runs the whole batch's legs locally and sequentially, keeps the durable batch as crash-safe truth (quarantine a mid-trade leg, never re-run a completed one), and settles once via `SettleCashOutAsync`.
+- `src/Catsino.Plugin/Payout/CashOutBatch.cs`: batch plan/state models, `PersistentCashOutBatchStore` (durable atomic per-batch storage), and `BackendPayoutSettlementTransport`.
+- `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`: legacy per-leg push coordinator (durable-outbox start guard, `ResumeBackendOperationAsync`, `MarkOpenEventPersisted`); no longer wired into the runtime's cash-out path.
 - `src/Catsino.Plugin/Payout/PayoutExecutionPolicy.cs`: readiness and safety checks before execution.
 - `src/Catsino.Plugin/Payout/PersistentPayoutOutbox.cs`: durable event storage and replay; `HasPendingForOperationAsync` is the cross-restart guard that blocks re-trading a leg with undelivered events.
 - `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`: built-in outgoing payout trade executor; `ConfirmTrade` holds off moving gil until `TradeOpened` is durably persisted.

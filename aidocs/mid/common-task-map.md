@@ -33,12 +33,14 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 - `src/Catsino.Plugin/Workflow/DealerSessionActions.cs`
 - `src/Catsino.Plugin/Workflow/DepositSubmission.cs`
 
-## Payout Execution
+## Payout Execution (client-driven cash-out batch)
 
-- `src/Catsino.Plugin/Payout/PayoutCoordinator.cs`
-- `src/Catsino.Plugin/Payout/PayoutExecutionPolicy.cs`
+- `src/Catsino.Plugin/Payout/PayoutBatchCoordinator.cs` (runs the whole batch locally, settles once)
+- `src/Catsino.Plugin/Payout/CashOutBatch.cs` (durable batch plan/store + settlement transport)
 - `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`
+- `src/Catsino.Plugin/Payout/PayoutExecutionPolicy.cs`
 - `src/Catsino.Plugin/Payout/PayoutTradeModels.cs`
+- `src/Catsino.Plugin/Payout/PayoutCoordinator.cs` (legacy per-leg push flow, no longer used by cash-out)
 
 ## Durable Outbox And Replay
 
@@ -49,8 +51,8 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 ## Hub Reconnection And Recovery
 
 - `src/Catsino.Plugin/Backend/PluginHubClient.cs`
-- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`PollBackendStateAsync`, `SynchronizeAfterHubConnectionAsync`, `RecoverOpenPayoutAsync`, `ReconcileStrandedOperationAsync` — replay-first, then resume or reconcile open payout operations)
-- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`ReconcileOperationAsync`)
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`PollBackendStateAsync`, `SynchronizeAfterHubConnectionAsync` → `PayoutBatchCoordinator.ResumeAsync`; `RequestDealerRefreshAsync` debounces roster pushes)
+- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`SettleCashOutAsync`, `GetOpenCashOutsAsync`)
 
 ## Protocol Shape And Compatibility
 

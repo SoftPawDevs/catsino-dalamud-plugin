@@ -16,6 +16,11 @@ public static class FinancialIdempotency
     public static Guid ForReconcile(Guid operationId) =>
         CreateDeterministic("payoutReconcile", operationId);
 
+    // A single deterministic settlement key per cash-out, so a resent settlement (retry / restart) is
+    // idempotent on the backend rather than double-booking.
+    public static Guid ForCashOutSettlement(Guid cashOutId) =>
+        CreateDeterministic("cashOutSettlement", cashOutId);
+
     private static Guid CreateDeterministic(string purpose, Guid operationId, long sequenceNumber)
     {
         if (operationId == Guid.Empty || sequenceNumber <= 0)
