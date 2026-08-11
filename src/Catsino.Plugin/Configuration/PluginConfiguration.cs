@@ -15,4 +15,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public long DefaultMinBet { get; set; } = Contracts.PlinkoBetDefaults.MinBet;
 
     public long DefaultMaxBet { get; set; } = Contracts.PlinkoBetDefaults.MaxBet;
+
+    // Optional per-plugin default player cap that pre-fills newly created sessions. null = unlimited.
+    public int? DefaultMaxPlayers { get; set; }
 }

@@ -11,7 +11,7 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 - It runs inside FFXIV through Dalamud.
 - It authorizes the dealer and connects outward to the backend.
 - It manages sessions, invites, player roster views, dealer actions, and payout execution.
-- It stores a per-plugin default dealer fee that pre-fills newly created sessions.
+- It stores per-plugin defaults (dealer fee, min/max bet, and an optional player cap) that pre-fill newly created sessions. The player cap is sent as `CreateGameSessionRequest.MaxPlayers` (public contract 1.4.0; null = unlimited) and is enforced server-side at invite redemption.
 - It sends invite requests with explicit Home World and starting balance, and blocks duplicate invites for active or already-pending players — except the per-player "Reinvite" action, which deliberately re-sends a fresh link to an active player (redeeming it resumes their membership, wallet kept).
 - It contains no authoritative balance engine, no backend secrets, no database logic, and no trusted Plinko outcome logic.
 - Outgoing payout execution is built directly into the dealer plugin.

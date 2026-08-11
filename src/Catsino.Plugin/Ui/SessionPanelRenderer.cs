@@ -97,6 +97,9 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
     private void DrawSessionControls(GameSessionDto session, PanelState state)
     {
         ImGui.TextDisabled($"Dealer fee fixed at creation: {session.FeePercent.ToString("0.00", CultureInfo.InvariantCulture)}%");
+        ImGui.TextDisabled(session.MaxPlayers is { } cap
+            ? $"Players: {session.PlayerCount} / {cap.ToString(CultureInfo.InvariantCulture)}"
+            : $"Players: {session.PlayerCount} (no cap)");
     }
 
     private void DrawRosterTable(GameSessionDto session, SessionRosterDto roster, PanelState state)

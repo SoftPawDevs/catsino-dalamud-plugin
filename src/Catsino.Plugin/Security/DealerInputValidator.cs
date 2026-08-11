@@ -69,6 +69,28 @@ public static partial class DealerInputValidator
         return null;
     }
 
+    public static string? ValidateMaxPlayers(int? maxPlayers) =>
+        maxPlayers is < 1 ? "Maximum players must be at least 1 when set." : null;
+
+    // Parses the optional player cap from the create-session field. Empty/whitespace = unlimited (null).
+    // A set value must be a whole number >= 1.
+    public static bool TryParseMaxPlayers(string text, out int? maxPlayers)
+    {
+        maxPlayers = null;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        if (!int.TryParse(text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var value) || value < 1)
+        {
+            return false;
+        }
+
+        maxPlayers = value;
+        return true;
+    }
+
     public static bool TryParseFee(string text, out decimal fee) =>
         decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out fee);
 

@@ -26,7 +26,8 @@ public sealed record GameSessionDto(
     string ReconciliationState,
     DateTimeOffset CreatedAt,
     DateTimeOffset? OpenedAt,
-    DateTimeOffset? ClosedAt);
+    DateTimeOffset? ClosedAt,
+    int? MaxPlayers = null);
 
 public static class PlinkoBetDefaults
 {
@@ -34,7 +35,7 @@ public static class PlinkoBetDefaults
     public const long MaxBet = 1_000_000;
 }
 
-public sealed record CreateGameSessionRequest(string GameType, decimal FeePercent, long? MinBet = null, long? MaxBet = null);
+public sealed record CreateGameSessionRequest(string GameType, decimal FeePercent, long? MinBet = null, long? MaxBet = null, int? MaxPlayers = null);
 
 public sealed record UpdateSessionFeeRequest(decimal FeePercent);
 

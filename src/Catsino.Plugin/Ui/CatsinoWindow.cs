@@ -16,6 +16,7 @@ public sealed class CatsinoWindow : Window
     private string createFee;
     private string createMinBet;
     private string createMaxBet;
+    private string createMaxPlayers;
     private string validationMessage = string.Empty;
     private bool busy;
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
@@ -30,6 +31,7 @@ public sealed class CatsinoWindow : Window
         createFee = runtime.DefaultDealerFeePercent.ToString(CultureInfo.InvariantCulture);
         createMinBet = runtime.DefaultMinBet.ToString(CultureInfo.InvariantCulture);
         createMaxBet = runtime.DefaultMaxBet.ToString(CultureInfo.InvariantCulture);
+        createMaxPlayers = runtime.DefaultMaxPlayers?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
     public override void PreDraw()
@@ -149,6 +151,11 @@ public sealed class CatsinoWindow : Window
         ImGui.SameLine();
         ImGui.SetNextItemWidth(120);
         ImGui.InputText("Max bet", ref createMaxBet, 20, ImGuiInputTextFlags.CharsDecimal);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(120);
+        ImGui.InputText("Max players", ref createMaxPlayers, 12, ImGuiInputTextFlags.CharsDecimal);
+        ImGui.SameLine();
+        ImGui.TextDisabled("(empty = unlimited)");
 
         ImGui.SameLine();
         if (ImGui.Button("Create Plinko"))
@@ -167,9 +174,13 @@ public sealed class CatsinoWindow : Window
             {
                 validationMessage = betError;
             }
+            else if (!DealerInputValidator.TryParseMaxPlayers(createMaxPlayers, out var maxPlayers))
+            {
+                validationMessage = "Max players must be empty (unlimited) or a whole number of at least 1.";
+            }
             else
             {
-                Run(() => runtime.CreatePlinkoSessionAsync(fee, minBet, maxBet));
+                Run(() => runtime.CreatePlinkoSessionAsync(fee, minBet, maxBet, maxPlayers));
             }
         }
 

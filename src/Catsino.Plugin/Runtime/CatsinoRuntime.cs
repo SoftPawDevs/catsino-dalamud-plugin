@@ -75,6 +75,11 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             configuration.DefaultMaxBet = PlinkoBetDefaults.MaxBet;
         }
 
+        if (DealerInputValidator.ValidateMaxPlayers(configuration.DefaultMaxPlayers) is not null)
+        {
+            configuration.DefaultMaxPlayers = null;
+        }
+
         pluginInterface.SavePluginConfig(configuration);
         character = ReadCharacter();
         payoutExecutor = new BuiltInPayoutTradeExecutor(framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
@@ -135,6 +140,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     public long DefaultMinBet => configuration.DefaultMinBet;
 
     public long DefaultMaxBet => configuration.DefaultMaxBet;
+
+    public int? DefaultMaxPlayers => configuration.DefaultMaxPlayers;
 
     public int PendingOutboxEvents { get; private set; }
 
@@ -318,7 +325,18 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         pluginInterface.SavePluginConfig(configuration);
     }
 
-    public async Task CreatePlinkoSessionAsync(decimal feePercent, long minBet, long maxBet, CancellationToken cancellationToken = default)
+    private void SaveDefaultMaxPlayers(int? maxPlayers)
+    {
+        if (configuration.DefaultMaxPlayers == maxPlayers)
+        {
+            return;
+        }
+
+        configuration.DefaultMaxPlayers = maxPlayers;
+        pluginInterface.SavePluginConfig(configuration);
+    }
+
+    public async Task CreatePlinkoSessionAsync(decimal feePercent, long minBet, long maxBet, int? maxPlayers, CancellationToken cancellationToken = default)
     {
         var feeError = DealerInputValidator.ValidateFee(feePercent, GameSessionState.Created);
         if (feeError is not null)
@@ -332,12 +350,20 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             throw new InvalidOperationException(betError);
         }
 
+        var maxPlayersError = DealerInputValidator.ValidateMaxPlayers(maxPlayers);
+        if (maxPlayersError is not null)
+        {
+            throw new InvalidOperationException(maxPlayersError);
+        }
+
         SaveDefaultBetLimits(minBet, maxBet);
+        SaveDefaultMaxPlayers(maxPlayers);
         var epoch = Volatile.Read(ref authorizationEpoch);
         var invariant = System.Globalization.CultureInfo.InvariantCulture;
-        var logicalOperation = $"session:create:plinko:{feePercent.ToString(invariant)}:{minBet.ToString(invariant)}:{maxBet.ToString(invariant)}";
+        var maxPlayersToken = maxPlayers?.ToString(invariant) ?? "unlimited";
+        var logicalOperation = $"session:create:plinko:{feePercent.ToString(invariant)}:{minBet.ToString(invariant)}:{maxBet.ToString(invariant)}:{maxPlayersToken}";
         var key = financialKeys.GetOrCreate(logicalOperation);
-        var created = await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", feePercent, minBet, maxBet), key, cancellationToken).ConfigureAwait(false);
+        var created = await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", feePercent, minBet, maxBet, maxPlayers), key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
         lock (stateSync)
         {

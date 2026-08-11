@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.3.0",
+  "contractVersion": "1.4.0",
   "serialization": {
     "propertyNames": "camelCase",
     "enums": "camelCaseStrings",
@@ -46,7 +46,7 @@
   },
   "dtoDefinitions": {
     "PayoutExecutorStatusDto": { "executorInstanceId": "guid", "isReady": "bool", "hasActiveOperation": "bool", "activeOperationId": "guid|null", "status": "string", "observedAt": "utcDateTimeOffset" },
-    "GameSessionDto": { "sessionId": "guid", "gameType": "string", "feePercent": "decimal", "state": "GameSessionState", "playerCount": "int32", "totalDepositedGil": "int64", "payoutState": "string", "reconciliationState": "string", "createdAt": "utcDateTimeOffset", "openedAt": "utcDateTimeOffset|null", "closedAt": "utcDateTimeOffset|null" },
+    "GameSessionDto": { "sessionId": "guid", "gameType": "string", "feePercent": "decimal", "state": "GameSessionState", "playerCount": "int32", "totalDepositedGil": "int64", "payoutState": "string", "reconciliationState": "string", "createdAt": "utcDateTimeOffset", "openedAt": "utcDateTimeOffset|null", "closedAt": "utcDateTimeOffset|null", "maxPlayers": "int32|null" },
     "SessionPlayerDto": { "playerId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "state": "SessionPlayerState", "depositedGil": "int64", "payoutGil": "int64|null", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
     "SessionRosterPlayerDto": { "membershipId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "tokens": "int64", "bettingLocked": "bool", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
     "PendingInviteDto": { "inviteId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "initialBalanceGil": "int64", "createdAt": "utcDateTimeOffset", "expiresAt": "utcDateTimeOffset" },
@@ -71,8 +71,8 @@
     "PluginPairingDto": { "pairingId": "00000000-0000-0000-0000-000000000002", "pairedAt": "2026-08-05T12:00:00+00:00", "lastHeartbeatAt": "2026-08-05T12:00:00+00:00" },
     "PluginHeartbeatRequest": { "pairingId": "00000000-0000-0000-0000-000000000002", "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.2.0", "contractVersion": "1.2.0", "pendingOutboxEvents": 0, "sentAt": "2026-08-05T12:00:00+00:00" },
     "ApiErrorDto": { "code": "validationError", "message": "Request validation failed.", "validationErrors": { "feePercent": ["Must be between 0 and 100."] }, "traceId": "00000000-0000-0000-0000-000000000004" },
-    "GameSessionDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "gameType": "plinko", "feePercent": 0.0, "state": "closing", "playerCount": 1, "totalDepositedGil": 1000, "payoutState": "pending", "reconciliationState": "clear", "createdAt": "2026-08-05T12:00:00+00:00", "openedAt": "2026-08-05T12:05:00+00:00", "closedAt": null },
-    "CreateGameSessionRequest": { "gameType": "plinko", "feePercent": 0.0 },
+    "GameSessionDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "gameType": "plinko", "feePercent": 0.0, "state": "closing", "playerCount": 1, "totalDepositedGil": 1000, "payoutState": "pending", "reconciliationState": "clear", "createdAt": "2026-08-05T12:00:00+00:00", "openedAt": "2026-08-05T12:05:00+00:00", "closedAt": null, "maxPlayers": 4 },
+    "CreateGameSessionRequest": { "gameType": "plinko", "feePercent": 0.0, "maxPlayers": 4 },
     "UpdateSessionFeeRequest": { "feePercent": 5.5 },
     "SessionPlayerDto": { "playerId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "state": "open", "depositedGil": 1000, "payoutGil": null, "payoutState": "pending", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
     "SessionRosterPlayerDto": { "membershipId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "balanceGil": 1000, "netGil": 250, "tokens": 1250, "reservedTokens": 0, "bettingLocked": false, "payoutState": "none", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
