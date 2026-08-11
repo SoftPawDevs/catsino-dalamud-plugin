@@ -124,7 +124,8 @@ public sealed class PayoutBatchCoordinator : IAsyncDisposable, IDisposable
         }
     }
 
-    // Aborts the current leg if it has not opened a trade yet (no gil at risk). Refused once the trade is open.
+    // Aborts the active cash-out. The executor decides the outcome from the actual gil movement, so an
+    // abort always succeeds and the unpaid remainder is released back to the player's tokens (via settle).
     public async Task<bool> AbortActiveAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -133,8 +134,19 @@ public sealed class PayoutBatchCoordinator : IAsyncDisposable, IDisposable
         {
             if (active is null)
                 return false;
-            if (!executor.CancelOperation(activeOperationId))
-                throw new InvalidOperationException("The payout trade is already open in-game and must be resolved through the trade window, not aborted.");
+            if (executor.CancelOperation(activeOperationId))
+                return true;
+            // No in-flight executor operation matched (it already ended, or none had started): release the
+            // remainder ourselves by failing the current not-yet-traded leg and settling. A leg already
+            // mid-trade (Trading) is left alone so gil that may have moved is never double-released.
+            var leg = active.Legs.FirstOrDefault(x => x.Number == activeLegNumber);
+            if (leg is { Progress: CashOutLegProgress.Pending })
+            {
+                leg.Progress = CashOutLegProgress.Failed;
+                leg.ErrorCode = "abortedByDealer";
+                await store.SaveAsync(active, cancellationToken).ConfigureAwait(false);
+            }
+            await SettleAsync(cancellationToken).ConfigureAwait(false);
             return true;
         }
         finally

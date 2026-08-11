@@ -124,14 +124,11 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             return false;
         }
 
-        // Financial safety: never abort a trade that is already open in-game (gil could still move);
-        // the dealer resolves it by closing the trade window, which the sequence turns into a clean
-        // release. Otherwise request the abort; the framework thread performs it.
-        if (tradeOpened || condition[ConditionFlag.TradeOpen])
-        {
-            return false;
-        }
-
+        // Always honour an abort. The terminal outcome is then decided from the ACTUAL gil movement
+        // (ResolveOutcome on the framework thread), never from a possibly-stale trade-open flag: if no gil
+        // left the dealer's pouch the remainder is released cleanly to the player; if gil did move it
+        // settles as completed/ambiguous so a real transfer is never lost. This lets the dealer abort even
+        // when the game/plugin state wrongly reports the trade window as open.
         cancelRequested = true;
         return true;
     }
@@ -186,8 +183,9 @@ public sealed unsafe class BuiltInPayoutTradeExecutor : IPayoutTradeExecutor
             {
                 cancelRequested = false;
                 taskManager.Abort();
-                PublishTerminal(PayoutTradeEventType.TradeCancelled, PayoutTradeState.Cancelled, "backendCancelled", null, false);
-                operation = null;
+                // Resolve from the gil balance, not from the button: a never-opened trade releases cleanly,
+                // an actually-open one is flagged for review, a moved-gil one settles as completed.
+                ResolveOutcome(tradeCurrentlyOpen: condition[ConditionFlag.TradeOpen]);
                 return;
             }
 
