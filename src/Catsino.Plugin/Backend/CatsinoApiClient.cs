@@ -164,6 +164,19 @@ public sealed class CatsinoApiClient : IDisposable
     public Task<SessionRosterDto> GetSessionRosterAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<SessionRosterDto>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/roster", cancellationToken: cancellationToken);
 
+    // === Blackjack (dealer surface) ===
+    public Task<BlackjackTableDto> GetBlackjackTableAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<BlackjackTableDto>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/blackjack", cancellationToken: cancellationToken);
+
+    public Task<BlackjackTableDto> DealBlackjackAsync(Guid sessionId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<BlackjackTableDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/blackjack/deal", new BlackjackDealRequest(sessionId), idempotencyKey, cancellationToken);
+
+    public Task<BlackjackTableDto> DealerBlackjackHitAsync(Guid sessionId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<BlackjackTableDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/blackjack/hit", new BlackjackDealerActionRequest(sessionId), idempotencyKey, cancellationToken);
+
+    public Task<BlackjackTableDto> DealerBlackjackStayAsync(Guid sessionId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<BlackjackTableDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/blackjack/stay", new BlackjackDealerActionRequest(sessionId), idempotencyKey, cancellationToken);
+
     public Task<IReadOnlyList<PendingInviteDto>> GetPendingInvitesAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<IReadOnlyList<PendingInviteDto>>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/invites", cancellationToken: cancellationToken);
 
@@ -499,5 +512,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.4.1";
+    public const string Current = "1.5.0";
 }

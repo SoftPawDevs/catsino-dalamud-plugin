@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.4.1.0",
+    "AssemblyVersion": "1.5.0.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.4.1/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.4.1/Catsino.Plugin.zip?download=1",
-    "Changelog": "Dealer can always abort a payout; the unpaid remainder returns to the player as tokens.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.0/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.0/Catsino.Plugin.zip?download=1",
+    "Changelog": "New Blackjack game mode: dealer runs the table from the new Blackjack tab (Deal/Hit/Stay) with a 45s turn timer; players play from the web.",
     "Tags": ["dealer", "games"]
   }
 ]

@@ -42,7 +42,7 @@ public sealed class Plugin : IDalamudPlugin
         ECommonsMain.Init(pluginInterface, this);
         runtime = new CatsinoRuntime(pluginInterface, playerState, framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
         sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId));
-        window = new CatsinoWindow(runtime, sessionPanel);
+        window = new CatsinoWindow(runtime, sessionPanel, new BlackjackPanelRenderer(runtime));
         windowSystem.AddWindow(window);
         runtime.SessionRemoved += OnSessionRemoved;
 

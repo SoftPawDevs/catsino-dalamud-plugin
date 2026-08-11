@@ -27,6 +27,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private long dealerRefreshTicket;
     private readonly LogicalIdempotencyKeys financialKeys = new();
     private readonly SessionRosterStore rosterStore = new();
+    private readonly BlackjackTableStore blackjackStore = new();
     private readonly ConcurrentDictionary<SessionPlayerKey, BalanceAdjustmentSubmission> balanceAdjustments = new();
     private readonly ConcurrentDictionary<SessionPlayerKey, CashOutSubmission> cashOuts = new();
     private readonly object stateSync = new();
@@ -100,6 +101,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         // The dealer roster refresh is coalesced (debounced) so a burst of pushes — e.g. rapid Plinko
         // drops each nudging the dealer — collapses into at most one roster re-fetch per window.
         hub.RefreshDealerSessions += () => RunBackground(RequestDealerRefreshAsync);
+        hub.BlackjackStateChanged += table => blackjackStore.Set(table);
         hub.SessionClosed += _ => RunBackground(RefreshSessionsAsync);
         hub.DealerAuthorizationRevoked += reason => RunBackground(token => RevokeAuthorizationAsync(reason, token));
         hub.ReconnectRequired += reason => RunBackground(token => ReconnectHubAsync(reason, token));
@@ -148,6 +150,35 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     public event Action<Guid>? SessionRemoved;
 
     public SessionRosterDto? GetRoster(Guid sessionId) => rosterStore.Get(sessionId);
+
+    public BlackjackTableDto? GetBlackjackTable(Guid sessionId) => blackjackStore.Get(sessionId);
+
+    // Dealer round-control + hand actions. Each press uses a fresh idempotency key (a network retry of one
+    // press reuses that key inside the API client), and the returned table is stored immediately so the UI
+    // updates without waiting for the hub push that follows.
+    public async Task DealBlackjackAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        blackjackStore.Set(await api.DealBlackjackAsync(sessionId, Guid.NewGuid(), cancellationToken).ConfigureAwait(false));
+    }
+
+    public async Task DealerBlackjackHitAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        blackjackStore.Set(await api.DealerBlackjackHitAsync(sessionId, Guid.NewGuid(), cancellationToken).ConfigureAwait(false));
+    }
+
+    public async Task DealerBlackjackStayAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        blackjackStore.Set(await api.DealerBlackjackStayAsync(sessionId, Guid.NewGuid(), cancellationToken).ConfigureAwait(false));
+    }
+
+    public async Task RefreshBlackjackTableAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        blackjackStore.Set(await api.GetBlackjackTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+    }
 
     public GameSessionDto? GetSession(Guid sessionId) =>
         SelectedSession?.SessionId == sessionId
@@ -336,8 +367,14 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         pluginInterface.SavePluginConfig(configuration);
     }
 
-    public async Task CreatePlinkoSessionAsync(decimal feePercent, long minBet, long maxBet, int? maxPlayers, CancellationToken cancellationToken = default)
+    public async Task CreateSessionAsync(string gameType, decimal feePercent, long minBet, long maxBet, int? maxPlayers, CancellationToken cancellationToken = default)
     {
+        gameType = gameType.Trim().ToLowerInvariant();
+        if (gameType is not ("plinko" or "blackjack"))
+        {
+            throw new InvalidOperationException("Only Plinko and Blackjack sessions can be created.");
+        }
+
         var feeError = DealerInputValidator.ValidateFee(feePercent, GameSessionState.Created);
         if (feeError is not null)
         {
@@ -361,9 +398,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         var epoch = Volatile.Read(ref authorizationEpoch);
         var invariant = System.Globalization.CultureInfo.InvariantCulture;
         var maxPlayersToken = maxPlayers?.ToString(invariant) ?? "unlimited";
-        var logicalOperation = $"session:create:plinko:{feePercent.ToString(invariant)}:{minBet.ToString(invariant)}:{maxBet.ToString(invariant)}:{maxPlayersToken}";
+        var logicalOperation = $"session:create:{gameType}:{feePercent.ToString(invariant)}:{minBet.ToString(invariant)}:{maxBet.ToString(invariant)}:{maxPlayersToken}";
         var key = financialKeys.GetOrCreate(logicalOperation);
-        var created = await api.CreateSessionAsync(new CreateGameSessionRequest("plinko", feePercent, minBet, maxBet, maxPlayers), key, cancellationToken).ConfigureAwait(false);
+        var created = await api.CreateSessionAsync(new CreateGameSessionRequest(gameType, feePercent, minBet, maxBet, maxPlayers), key, cancellationToken).ConfigureAwait(false);
         financialKeys.Complete(logicalOperation, key);
         lock (stateSync)
         {
@@ -375,7 +412,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             SelectedSession = created;
             ApplySession(created);
             TrackSession(created.SessionId);
-            SetStatus("Created a Plinko session.");
+            SetStatus($"Created a {created.GameType} session.");
         }
 
         await TryRefreshSessionsAfterMutationAsync(cancellationToken).ConfigureAwait(false);
@@ -966,6 +1003,34 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         await Task.WhenAll(sessionIds.Select(sessionId =>
             rosterStore.RefreshAsync(sessionId, LoadRoster, cancellationToken))).ConfigureAwait(false);
 
+        // Blackjack tables are pushed over the hub, but poll them too (fallback + initial fill) so the dealer's
+        // Blackjack tab stays fresh even if a push is missed. A per-table error must not fail the roster refresh.
+        foreach (var sessionId in sessionIds)
+        {
+            if (epoch != Volatile.Read(ref authorizationEpoch))
+            {
+                return;
+            }
+
+            if (!string.Equals(GetSession(sessionId)?.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                blackjackStore.Set(await api.GetBlackjackTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // transient; the hub push or the next poll refreshes it
+            }
+        }
+
         async Task<SessionRosterDto> LoadRoster(Guid sessionId, CancellationToken token)
         {
             var roster = await api.GetSessionRosterAsync(sessionId, token).ConfigureAwait(false);
@@ -1006,6 +1071,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             SelectedSession = null;
             OpenPayoutOperations = [];
             rosterStore.Clear();
+            blackjackStore.Clear();
             RemoveResolvedSubmissions();
             ActionDrafts.Clear();
             lock (trackedSessionsSync)

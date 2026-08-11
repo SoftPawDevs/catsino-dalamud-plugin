@@ -9,8 +9,8 @@ public sealed class ContractSerializationTests
     [Fact]
     public void VersionIsStable()
     {
-        Assert.Equal("1.4.0", ContractVersion.Current);
-        Assert.Equal("1.4.1", PluginVersion.Current);
+        Assert.Equal("1.5.0", ContractVersion.Current);
+        Assert.Equal("1.5.0", PluginVersion.Current);
     }
 
     [Fact]

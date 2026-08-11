@@ -109,3 +109,40 @@ public sealed record DepositDto(
     long AmountGil,
     Guid IdempotencyKey,
     DateTimeOffset RecordedAt);
+
+// === Blackjack (dealer side) ===
+// Rank 1 = Ace, 11 = J, 12 = Q, 13 = K. Suit 0 = Clubs, 1 = Diamonds, 2 = Hearts, 3 = Spades.
+public sealed record BlackjackCardDto(int Rank, int Suit);
+
+public sealed record BlackjackSeatDto(
+    Guid MembershipId,
+    string Name,
+    string HomeWorld,
+    long Tokens,
+    long Bet,
+    IReadOnlyList<BlackjackCardDto> Cards,
+    int Value,
+    bool IsBust,
+    bool IsBlackjack,
+    string Status,
+    bool IsActive,
+    long? Payout,
+    long? Net);
+
+// Shared table view. While DealerHasHiddenCard is true the hole card is withheld: DealerCards holds only the
+// up-card(s) and DealerValue is their value. Status is idle|betting|playerTurns|dealerTurn|settled.
+public sealed record BlackjackTableDto(
+    Guid SessionId,
+    Guid? RoundId,
+    string Status,
+    IReadOnlyList<BlackjackSeatDto> Seats,
+    IReadOnlyList<BlackjackCardDto> DealerCards,
+    bool DealerHasHiddenCard,
+    int DealerValue,
+    Guid? ActiveMembershipId,
+    bool DealerTurn,
+    DateTimeOffset? DeadlineAt,
+    DateTimeOffset ObservedAt);
+
+public sealed record BlackjackDealRequest(Guid SessionId);
+public sealed record BlackjackDealerActionRequest(Guid SessionId);
