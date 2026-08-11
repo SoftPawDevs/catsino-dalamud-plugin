@@ -23,6 +23,10 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime, CardTextures 
     private static readonly Vector4 LossColor = new(1f, 0.53f, 0.58f, 1f);
     private static readonly Vector2 CardSize = new(CardTextures.Width, CardTextures.Height);
 
+    // "2.500.000" — dot thousands separators, matching the rest of the plugin and the web.
+    private static readonly NumberFormatInfo DottedGil = new() { NumberGroupSeparator = ".", NumberGroupSizes = [3], NumberDecimalDigits = 0 };
+    private static string Dots(long amount) => amount.ToString("N0", DottedGil);
+
     public void Draw(Guid sessionId)
     {
         while (pendingUiUpdates.TryDequeue(out var update))
@@ -176,24 +180,16 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime, CardTextures 
                 ImGui.TextDisabled("Waiting for the deal.");
             }
 
-            // Value / Tokens / Bet spaced apart for readability.
-            ImGui.TextDisabled("Value");
-            ImGui.SameLine();
-            ImGui.TextUnformatted(seat.Value.ToString(CultureInfo.InvariantCulture));
+            // Value / Tokens / Bet spaced apart for readability, "Label: value" with dot separators.
+            ImGui.TextUnformatted($"Value: {seat.Value.ToString(CultureInfo.InvariantCulture)}");
             ImGui.SameLine(0f, 28f);
-            ImGui.TextDisabled("Tokens");
-            ImGui.SameLine();
-            ImGui.TextUnformatted(seat.Tokens.ToString("N0", CultureInfo.InvariantCulture));
+            ImGui.TextUnformatted($"Tokens: {Dots(seat.Tokens)}");
             ImGui.SameLine(0f, 28f);
-            ImGui.TextDisabled("Bet");
-            ImGui.SameLine();
-            ImGui.TextUnformatted(seat.Bet.ToString("N0", CultureInfo.InvariantCulture));
+            ImGui.TextUnformatted($"Bet: {Dots(seat.Bet)}");
             if (seat.Net is { } net)
             {
                 ImGui.SameLine(0f, 28f);
-                ImGui.TextDisabled("Result");
-                ImGui.SameLine();
-                ImGui.TextColored(net >= 0 ? WinColor : LossColor, net.ToString("+#,0;-#,0;0", CultureInfo.InvariantCulture));
+                ImGui.TextColored(net >= 0 ? WinColor : LossColor, $"Result: {(net >= 0 ? "+" : "-")}{Dots(Math.Abs(net))}");
             }
 
             ImGui.Separator();

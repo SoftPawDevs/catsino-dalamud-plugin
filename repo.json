@@ -5,13 +5,13 @@
     "Punchline": "Public dealer client for Catsino sessions.",
     "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.5.1.0",
+    "AssemblyVersion": "1.5.2.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.1/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.1/Catsino.Plugin.zip?download=1",
-    "Changelog": "Blackjack polish: card face images on the table; the live table is now the session's Table sub-tab; clearer per-player layout.",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.2/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.2/Catsino.Plugin.zip?download=1",
+    "Changelog": "Smaller card images on the dealer table and clearer per-player stats. Ties now resolve in the player's favour; staying while behind concedes.",
     "Tags": ["dealer", "games"]
   }
 ]
