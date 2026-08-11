@@ -1,6 +1,6 @@
 # Backend Protocol v1
 
-All JSON uses contract `1.3.0`, camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
+All JSON uses contract `1.4.0` (backend accepts plugins on `{1.3.0, 1.4.0}`), camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. Contract 1.4.0 adds an optional `maxPlayers` to `CreateGameSessionRequest`/`GameSessionDto` (null = unlimited). The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
 
 `backend-v1.fixture.json` is the machine-readable contract fixture. It enumerates every route, DTO example, hub event, hub payload, and idempotency requirement without requiring the private server to reference plugin source.
 

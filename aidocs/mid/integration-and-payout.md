@@ -60,8 +60,14 @@ settles a fully-resolved batch, or resumes the next pending leg. `GET /cashouts/
   node-3 lock button via `ClickAddonButton`, accept the `SelectYesno` via `AddonMaster.SelectYesno.Yes()`)
   → wait for the trade to close → resolve. `EzThrottler`/`FrameThrottler` pace the actions.
 - The executor runs a framework-thread supervisor (`OnFrameworkUpdate`) that enqueues the sequence
-  (StartOperation is called off-thread), performs backend-requested aborts, and — if the sequence
+  (StartOperation is called off-thread), performs dealer-requested aborts, and — if the sequence
   ends via timeout/abort without the resolve step — decides the terminal outcome.
+- **Abort always succeeds (1.4.1):** `CancelOperation` no longer refuses when a (possibly stale) flag
+  reports the trade window open. It always accepts, and the supervisor decides the outcome from the
+  ACTUAL gil movement (`ResolveOutcome`): a never-opened trade releases cleanly, a real transfer settles
+  as completed/ambiguous. `PayoutBatchCoordinator.AbortActiveAsync` also releases the remainder itself
+  (fails the current not-yet-traded leg + settles) when no executor operation is in flight — so the dealer
+  can always abort and the unpaid remainder returns to the player's tokens for a fresh cash-out.
 - **Financial proof is independent of the clicks:** the terminal outcome comes only from
   `TradeCloseEvaluator` (exact gil debit + accepted confirmation → `TradeCompleted`; unchanged +
   unconfirmed → `TradeCancelled`; anything else → reconciliation). A button press is never proof.
@@ -85,9 +91,10 @@ settles a fully-resolved batch, or resumes the next pending leg. `GET /cashouts/
 - Trade events are ignored unless the operation id and exact player identity/amount match the active leg.
 - The durable batch plan (not in-memory state) is the cross-restart source of truth; a leg marked `Trading`
   before a crash is quarantined as `ambiguous`, never re-traded, and a `Completed` leg is never repeated.
-- A clean failed/cancelled/timed-out leg releases the untraded remainder for a fresh cash out; an ambiguous
-  leg is quarantined on the backend (its gross is *not* refunded) and the membership is flagged
-  (`ReconciliationState = "reviewNeeded"`, shown in the session panel) for in-game verification before re-paying.
+- A clean failed/cancelled/timed-out leg releases the untraded remainder for a fresh cash out. An abort
+  always releases the unpaid remainder to the player's tokens (outcome decided by actual gil movement, 1.4.1).
+  The client reports `ambiguous` for an unverifiable trade; how the backend books an ambiguous leg is the
+  backend's decision (the active client-driven settle path refunds it — see the web repo's `mid/domain-and-state.md`).
 
 ## Where To Validate Changes
 

@@ -8,11 +8,13 @@
 - `src/Catsino.Plugin/Security/ProtectedCredentialStore.cs`
 - `tests/Catsino.Plugin.Tests/ValidationAndSecurityTests.cs`
 
-## Session Lists, Selection, Roster
+## Session Creation, Lists, Selection, Roster
 
-- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs`
+- `src/Catsino.Plugin/Ui/CatsinoWindow.cs` (create-Plinko form: default fee, min/max bet, and **Max players** — empty = unlimited)
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`CreatePlinkoSessionAsync(fee, minBet, maxBet, maxPlayers, …)`, per-plugin defaults incl. `DefaultMaxPlayers`)
+- `src/Catsino.Plugin/Configuration/PluginConfiguration.cs` (`DefaultMaxPlayers`), `src/Catsino.Plugin/Security/DealerInputValidator.cs` (`TryParseMaxPlayers`/`ValidateMaxPlayers`)
 - `src/Catsino.Plugin/Runtime/SessionRosterStore.cs`
-- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`
+- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (shows `Players: N / cap`)
 - `tests/Catsino.Plugin.Tests/DealerSessionStateTests.cs`
 
 ## Invites And Tell Command Flow
@@ -58,7 +60,7 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 
 ## Protocol Shape And Compatibility
 
-- `src/Catsino.Plugin.Contracts/`
-- `docs/protocol/backend-v1.md`
+- `src/Catsino.Plugin.Contracts/` (public contract **1.4.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers`. Backend accepts `{1.3.0, 1.4.0}`. Plugin binary version `PluginVersion.Current` is currently 1.4.1.)
+- `docs/protocol/backend-v1.md` + `docs/protocol/backend-v1.fixture.json`
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`
-- `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`
+- `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`, `ContractSerializationTests.cs`
