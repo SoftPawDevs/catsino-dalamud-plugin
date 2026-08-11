@@ -39,6 +39,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private DateTimeOffset nextIdentityCheck = DateTimeOffset.MinValue;
     private DateTimeOffset nextHeartbeat = DateTimeOffset.MinValue;
     private DateTimeOffset nextRosterPoll = DateTimeOffset.MinValue;
+    private DateTimeOffset nextBlackjackPoll = DateTimeOffset.MinValue;
     private CharacterIdentityDto character = new(string.Empty, string.Empty, string.Empty, false);
     private long selectionRevision;
     private long authorizationEpoch;
@@ -813,6 +814,49 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         {
             nextRosterPoll = now.AddSeconds(rosterStore.HasUnexpiredPendingInvites(now) ? 5 : 30);
             RunBackground(PollBackendStateAsync);
+        }
+
+        // Blackjack is turn-based, so the dealer's table must never lag behind the real turn even if a hub
+        // push is missed. Poll the live table for tracked blackjack sessions every couple of seconds.
+        if (api.IsAuthorized && now >= nextBlackjackPoll)
+        {
+            nextBlackjackPoll = now.AddSeconds(2);
+            RunBackground(RefreshBlackjackTablesAsync);
+        }
+    }
+
+    private async Task RefreshBlackjackTablesAsync(CancellationToken cancellationToken)
+    {
+        Guid[] sessionIds;
+        lock (trackedSessionsSync)
+        {
+            sessionIds = trackedSessions.ToArray();
+        }
+
+        foreach (var sessionId in sessionIds)
+        {
+            if (!api.IsAuthorized)
+            {
+                return;
+            }
+
+            if (!string.Equals(GetSession(sessionId)?.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                blackjackStore.Set(await api.GetBlackjackTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // transient; the next tick retries
+            }
         }
     }
 
