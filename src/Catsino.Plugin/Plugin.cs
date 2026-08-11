@@ -32,6 +32,7 @@ public sealed class Plugin : IDalamudPlugin
         ICondition condition,
         IGameGui gameGui,
         IDataManager dataManager,
+        ITextureProvider textureProvider,
         ICommandManager commandManager,
         IPluginLog pluginLog)
     {
@@ -41,8 +42,9 @@ public sealed class Plugin : IDalamudPlugin
         // ClickAddonButton, AddonMaster, throttlers, Svc) is constructed.
         ECommonsMain.Init(pluginInterface, this);
         runtime = new CatsinoRuntime(pluginInterface, playerState, framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
-        sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId));
-        window = new CatsinoWindow(runtime, sessionPanel, new BlackjackPanelRenderer(runtime));
+        var blackjackPanel = new BlackjackPanelRenderer(runtime, new CardTextures(textureProvider));
+        sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId), blackjackPanel);
+        window = new CatsinoWindow(runtime, sessionPanel);
         windowSystem.AddWindow(window);
         runtime.SessionRemoved += OnSessionRemoved;
 

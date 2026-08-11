@@ -9,7 +9,7 @@ using Dalamud.Bindings.ImGui;
 
 namespace Catsino.Plugin.Ui;
 
-public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> openDetached)
+public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> openDetached, BlackjackPanelRenderer blackjackPanel)
 {
     private readonly Dictionary<Guid, PanelState> states = [];
     private readonly ConcurrentDictionary<SessionPlayerKey, byte> busyPlayers = new();
@@ -43,6 +43,36 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         }
 
         ImGui.PushID(sessionId.ToString("D"));
+        if (string.Equals(session.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
+        {
+            // A blackjack session keeps the normal management view, plus a "Table" sub-tab hosting the live table.
+            if (ImGui.BeginTabBar("BlackjackSessionTabs"))
+            {
+                if (ImGui.BeginTabItem("Manage"))
+                {
+                    DrawManagement(sessionId, session, roster, state);
+                    ImGui.EndTabItem();
+                }
+
+                if (ImGui.BeginTabItem("Table"))
+                {
+                    blackjackPanel.Draw(sessionId);
+                    ImGui.EndTabItem();
+                }
+
+                ImGui.EndTabBar();
+            }
+        }
+        else
+        {
+            DrawManagement(sessionId, session, roster, state);
+        }
+
+        ImGui.PopID();
+    }
+
+    private void DrawManagement(Guid sessionId, GameSessionDto session, SessionRosterDto? roster, PanelState state)
+    {
         if (ImGui.Button("Open in new window"))
         {
             openDetached(sessionId);
@@ -85,13 +115,11 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         if (roster is null)
         {
             ImGui.TextDisabled("Loading authoritative roster...");
-            ImGui.PopID();
             return;
         }
 
         DrawRosterTable(session, roster, state);
         DrawConfirmations(roster, state);
-        ImGui.PopID();
     }
 
     private void DrawSessionControls(GameSessionDto session, PanelState state)

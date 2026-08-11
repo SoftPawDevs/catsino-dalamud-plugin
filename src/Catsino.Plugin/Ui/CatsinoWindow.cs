@@ -23,15 +23,13 @@ public sealed class CatsinoWindow : Window
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
     private readonly CatsinoRuntime runtime;
     private readonly SessionPanelRenderer sessionPanel;
-    private readonly BlackjackPanelRenderer blackjackPanel;
     private static readonly string[] GameTypes = ["Plinko", "Blackjack"];
 
-    public CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer sessionPanel, BlackjackPanelRenderer blackjackPanel)
+    public CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer sessionPanel)
         : base("Catsino###CatsinoMainWindow")
     {
         this.runtime = runtime;
         this.sessionPanel = sessionPanel;
-        this.blackjackPanel = blackjackPanel;
         createFee = runtime.DefaultDealerFeePercent.ToString(CultureInfo.InvariantCulture);
         createMinBet = runtime.DefaultMinBet.ToString(CultureInfo.InvariantCulture);
         createMaxBet = runtime.DefaultMaxBet.ToString(CultureInfo.InvariantCulture);
@@ -69,12 +67,6 @@ public sealed class CatsinoWindow : Window
         if (ImGui.BeginTabItem("Sessions"))
         {
             DrawSessions();
-            ImGui.EndTabItem();
-        }
-
-        if (ImGui.BeginTabItem("Blackjack"))
-        {
-            DrawBlackjack();
             ImGui.EndTabItem();
         }
 
@@ -230,49 +222,6 @@ public sealed class CatsinoWindow : Window
         {
             sessionPanel.Draw(selectedSessionId.Value);
         }
-        ImGui.EndGroup();
-    }
-
-    private void DrawBlackjack()
-    {
-        if (!runtime.IsAuthorized)
-        {
-            ImGui.TextDisabled("Authorize the dealer client first.");
-            return;
-        }
-
-        var blackjackSessions = runtime.Sessions
-            .Where(session => string.Equals(session.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        ImGui.BeginChild("BlackjackSessionList", new Vector2(210, 0), true, ImGuiWindowFlags.HorizontalScrollbar);
-        if (blackjackSessions.Count == 0)
-        {
-            ImGui.TextDisabled("No blackjack tables.\nCreate one in the Sessions tab.");
-        }
-
-        foreach (var session in blackjackSessions)
-        {
-            var selected = runtime.SelectedSession?.SessionId == session.SessionId;
-            if (ImGui.Selectable($"{session.State}##bj{session.SessionId:D}", selected))
-            {
-                Run(() => runtime.SelectSessionAsync(session.SessionId));
-            }
-        }
-
-        ImGui.EndChild();
-        ImGui.SameLine();
-        ImGui.BeginGroup();
-        var selectedSession = runtime.SelectedSession;
-        if (selectedSession is null || !string.Equals(selectedSession.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
-        {
-            ImGui.TextDisabled("Select a blackjack table.");
-        }
-        else
-        {
-            blackjackPanel.Draw(selectedSession.SessionId);
-        }
-
         ImGui.EndGroup();
     }
 

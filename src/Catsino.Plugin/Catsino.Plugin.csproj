@@ -6,10 +6,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>Catsino.Plugin</AssemblyName>
     <RootNamespace>Catsino.Plugin</RootNamespace>
-    <Version>1.5.0</Version>
-    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <Version>1.5.1</Version>
+    <AssemblyVersion>1.5.1.0</AssemblyVersion>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Card face + back images, embedded so the Blackjack table can draw them via ITextureProvider. -->
+    <EmbeddedResource Include="Assets\Cards\*.png" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Catsino.Plugin.Contracts\Catsino.Plugin.Contracts.csproj" />
   </ItemGroup>

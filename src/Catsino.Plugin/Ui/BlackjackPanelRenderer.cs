@@ -8,11 +8,10 @@ using Dalamud.Bindings.ImGui;
 
 namespace Catsino.Plugin.Ui;
 
-// The dealer's Blackjack surface (a per-session tab): the shared table with the dealer's hand, a per-player
-// row (Player | Tokens | Bet | Hand | Status), an always-on 45s turn countdown, and the dealer's Deal / Hit /
-// Stay controls. Layout follows the reference GUI, minus the payment/to-pay columns and with a Tokens column
-// (live balance, bet already escrowed) placed before Bet.
-public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
+// The dealer's Blackjack surface, shown as the "Table" sub-tab of a blackjack session: the dealer's hand
+// (card images), a per-player block (name/status, card images, then Value / Tokens / Bet spaced apart), an
+// always-on 45s turn countdown, and the dealer's Deal / Hit / Stay controls.
+public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime, CardTextures cards)
 {
     private readonly ConcurrentDictionary<Guid, byte> busySessions = new();
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
@@ -22,6 +21,7 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
     private static readonly Vector4 ActiveColor = new(0.95f, 0.79f, 0.41f, 1f);
     private static readonly Vector4 WinColor = new(0.48f, 1f, 0.69f, 1f);
     private static readonly Vector4 LossColor = new(1f, 0.53f, 0.58f, 1f);
+    private static readonly Vector2 CardSize = new(CardTextures.Width, CardTextures.Height);
 
     public void Draw(Guid sessionId)
     {
@@ -44,8 +44,7 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
         }
 
         ImGui.PushID(sessionId.ToString("D"));
-        var now = DateTimeOffset.UtcNow;
-        DrawHeader(table, now);
+        DrawHeader(table, DateTimeOffset.UtcNow);
         ImGui.Separator();
         DrawDealer(table);
         ImGui.Separator();
@@ -76,17 +75,26 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
         }
     }
 
-    private static void DrawDealer(BlackjackTableDto table)
+    private void DrawDealer(BlackjackTableDto table)
     {
-        var hand = string.Join(" ", table.DealerCards.Select(CardText));
-        if (table.DealerHasHiddenCard)
-        {
-            hand = string.IsNullOrEmpty(hand) ? "[??]" : $"{hand} [??]";
-        }
-
-        ImGui.TextUnformatted($"Dealer: {(string.IsNullOrEmpty(hand) ? "no cards" : hand)}");
+        ImGui.TextUnformatted("Dealer");
         ImGui.SameLine();
         ImGui.TextDisabled(table.DealerHasHiddenCard ? $"(showing {table.DealerValue})" : $"(value {table.DealerValue})");
+        var drew = false;
+        foreach (var card in table.DealerCards)
+        {
+            DrawCard(cards.Handle(card), $"{CardTextures.RankCode(card.Rank)}{CardTextures.SuitCode(card.Suit)}", ref drew);
+        }
+
+        if (table.DealerHasHiddenCard)
+        {
+            DrawCard(cards.Back, "??", ref drew);
+        }
+
+        if (!drew)
+        {
+            ImGui.TextDisabled("No cards dealt yet.");
+        }
     }
 
     private void DrawControls(Guid sessionId, BlackjackTableDto table)
@@ -121,7 +129,7 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
             {
                 "betting" => canDeal ? "Deal the players who have bet." : "Waiting for players to place bets.",
                 "playerTurns" => "Players are acting — watch the timer.",
-                "settled" => "Hand over. Players bet again to start the next one.",
+                "settled" => "Hand over. Betting reopens automatically.",
                 _ => "Waiting for players to place bets."
             });
         }
@@ -134,7 +142,7 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
         }
     }
 
-    private static void DrawSeats(BlackjackTableDto table)
+    private void DrawSeats(BlackjackTableDto table)
     {
         if (table.Seats.Count == 0)
         {
@@ -142,22 +150,8 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
             return;
         }
 
-        if (!ImGui.BeginTable("BlackjackSeats", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
-        {
-            return;
-        }
-
-        ImGui.TableSetupColumn("Player", ImGuiTableColumnFlags.WidthStretch, 2f);
-        ImGui.TableSetupColumn("Tokens", ImGuiTableColumnFlags.WidthStretch, 1.2f);
-        ImGui.TableSetupColumn("Bet", ImGuiTableColumnFlags.WidthStretch, 1f);
-        ImGui.TableSetupColumn("Hand", ImGuiTableColumnFlags.WidthStretch, 2.2f);
-        ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthStretch, 1.2f);
-        ImGui.TableHeadersRow();
-
         foreach (var seat in table.Seats)
         {
-            ImGui.TableNextRow();
-            ImGui.TableNextColumn();
             if (seat.IsActive)
             {
                 ImGui.TextColored(ActiveColor, $"> {seat.Name}");
@@ -167,26 +161,62 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
                 ImGui.TextUnformatted(seat.Name);
             }
 
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(seat.Tokens.ToString("N0", CultureInfo.InvariantCulture));
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(seat.Bet.ToString("N0", CultureInfo.InvariantCulture));
-            ImGui.TableNextColumn();
-            var hand = string.Join(" ", seat.Cards.Select(CardText));
-            ImGui.TextUnformatted(string.IsNullOrEmpty(hand) ? "-" : $"{hand} ({seat.Value})");
-            ImGui.TableNextColumn();
+            ImGui.SameLine();
             var (statusText, color) = SeatStatus(seat);
-            if (color is { } tint)
+            ImGui.TextColored(color ?? new Vector4(0.7f, 0.7f, 0.7f, 1f), $"[{statusText}]");
+
+            var drew = false;
+            foreach (var card in seat.Cards)
             {
-                ImGui.TextColored(tint, statusText);
+                DrawCard(cards.Handle(card), $"{CardTextures.RankCode(card.Rank)}{CardTextures.SuitCode(card.Suit)}", ref drew);
             }
-            else
+
+            if (!drew)
             {
-                ImGui.TextUnformatted(statusText);
+                ImGui.TextDisabled("Waiting for the deal.");
             }
+
+            // Value / Tokens / Bet spaced apart for readability.
+            ImGui.TextDisabled("Value");
+            ImGui.SameLine();
+            ImGui.TextUnformatted(seat.Value.ToString(CultureInfo.InvariantCulture));
+            ImGui.SameLine(0f, 28f);
+            ImGui.TextDisabled("Tokens");
+            ImGui.SameLine();
+            ImGui.TextUnformatted(seat.Tokens.ToString("N0", CultureInfo.InvariantCulture));
+            ImGui.SameLine(0f, 28f);
+            ImGui.TextDisabled("Bet");
+            ImGui.SameLine();
+            ImGui.TextUnformatted(seat.Bet.ToString("N0", CultureInfo.InvariantCulture));
+            if (seat.Net is { } net)
+            {
+                ImGui.SameLine(0f, 28f);
+                ImGui.TextDisabled("Result");
+                ImGui.SameLine();
+                ImGui.TextColored(net >= 0 ? WinColor : LossColor, net.ToString("+#,0;-#,0;0", CultureInfo.InvariantCulture));
+            }
+
+            ImGui.Separator();
+        }
+    }
+
+    private static void DrawCard(ImTextureID? handle, string fallback, ref bool drew)
+    {
+        if (drew)
+        {
+            ImGui.SameLine();
         }
 
-        ImGui.EndTable();
+        if (handle is { } id)
+        {
+            ImGui.Image(id, CardSize);
+        }
+        else
+        {
+            ImGui.TextUnformatted(fallback);
+        }
+
+        drew = true;
     }
 
     private static (string Text, Vector4? Color) SeatStatus(BlackjackSeatDto seat) => seat.Status switch
@@ -208,10 +238,6 @@ public sealed class BlackjackPanelRenderer(CatsinoRuntime runtime)
         "settled" => "Hand over",
         _ => "Idle"
     };
-
-    private static string CardText(BlackjackCardDto card) => $"{Rank(card.Rank)}{Suit(card.Suit)}";
-    private static string Rank(int rank) => rank switch { 1 => "A", 11 => "J", 12 => "Q", 13 => "K", _ => rank.ToString(CultureInfo.InvariantCulture) };
-    private static string Suit(int suit) => suit switch { 0 => "C", 1 => "D", 2 => "H", _ => "S" };
 
     private void Run(Guid sessionId, Func<Task> action) => _ = RunCoreAsync(sessionId, action);
 
