@@ -6,6 +6,24 @@
 - Realtime backend instructions go through `src/Catsino.Plugin/Backend/PluginHubClient.cs`.
 - Hub event names and protocol glue live beside the hub client.
 
+## Blackjack Table Integration
+
+The Blackjack dealer table is a read-mostly projection plus three dealer mutations. The plugin never deals cards
+or values hands — the backend owns the shoe, the hand values, the 45s turn clock, and settlement.
+
+- **Reads.** `CatsinoApiClient.GetBlackjackTableAsync(sessionId)` (`GET api/v1/game-sessions/{sessionId}/blackjack`)
+  returns the dealer `BlackjackTableDto` — the dealer's own full hand is included (unlike the player projection,
+  which hides the hole card during play); the shoe is never present.
+- **Mutations** (idempotency-keyed): `DealBlackjackAsync` (`POST …/blackjack/deal`), `DealerBlackjackHitAsync`
+  (`POST …/blackjack/hit`), `DealerBlackjackStayAsync` (`POST …/blackjack/stay`). Each returns the refreshed
+  dealer table. Deal only includes seats that placed a bet.
+- **Live updates, two ways.** The backend device-pushes `BlackjackStateChanged` (`PluginHubProtocol.BlackjackStateChanged`,
+  wired in `PluginHubClient` → `blackjackStore.Set(table)`), and `CatsinoRuntime.RefreshBlackjackTablesAsync`
+  polls tracked blackjack sessions about every ~2s. The poll is the belt-and-suspenders guarantee that the
+  Hit/Stay controls reflect whose turn it truly is even if a single live push is missed.
+- **State store.** `Runtime/BlackjackTableStore.cs` holds the latest `BlackjackTableDto` per session; the UI
+  (`BlackjackPanelRenderer`) enables Hit/Stay only when the table status is `dealerTurn`.
+
 ## Trade Executor Boundary
 
 - Outgoing payout execution is built into the dealer plugin and remains payout-only.

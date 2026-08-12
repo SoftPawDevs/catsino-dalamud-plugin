@@ -1,8 +1,8 @@
 {
   "Author": "Catsino",
   "Name": "Catsino",
-  "Punchline": "Public dealer client for Catsino sessions.",
-  "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
+  "Punchline": "The dealer's in-game companion for the Catsino casino.",
+  "Description": "The dealer's control panel, paired with the Catsino backend.",
   "InternalName": "Catsino.Plugin",
   "AssemblyVersion": "1.3.9.0",
   "ApplicableVersion": "any",

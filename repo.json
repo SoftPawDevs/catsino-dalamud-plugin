@@ -2,16 +2,16 @@
   {
     "Author": "Catsino",
     "Name": "Catsino",
-    "Punchline": "Public dealer client for Catsino sessions.",
-    "Description": "Untrusted dealer client for authorization, session rosters, balance adjustments, and backend-directed built-in payout trade execution.",
+    "Punchline": "The dealer's in-game companion for the Catsino casino.",
+    "Description": "The dealer's control panel, paired with the Catsino backend.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.5.4.0",
+    "AssemblyVersion": "1.5.5.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.4/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.4/Catsino.Plugin.zip?download=1",
-    "Changelog": "The dealer's blackjack table now polls every ~2s so the Hit/Stay controls always reflect whose turn it really is (previously the view could lag if a live update was missed).",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.5/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.5.5/Catsino.Plugin.zip?download=1",
+    "Changelog": "Refreshed the plugin's store listing so it plainly reads as the dealer's in-game companion for Catsino. No gameplay changes.",
     "Tags": ["dealer", "games"]
   }
 ]

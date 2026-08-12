@@ -4,7 +4,7 @@
 
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`: backend API contract expectations.
 - `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`: fixture compatibility and protocol shape.
-- `tests/Catsino.Plugin.Tests/ContractSerializationTests.cs`: DTO serialization behavior.
+- `tests/Catsino.Plugin.Tests/ContractSerializationTests.cs`: DTO serialization behavior and the version pin — `VersionIsStable` asserts `ContractVersion.Current == "1.5.0"` and `PluginVersion.Current == "1.5.5"` (bump both here when releasing).
 
 ## Runtime And State
 
@@ -26,6 +26,10 @@
 ## Trade Execution
 
 - `tests/Catsino.Plugin.Tests/PayoutCoordinatorTests.cs`: payout executor orchestration and exact event matching.
+
+## Coverage Gaps To Know
+
+- The Blackjack dealer surface (`Ui/BlackjackPanelRenderer.cs`, `Ui/CardTextures.cs`, `Runtime/BlackjackTableStore.cs`, the `RefreshBlackjackTablesAsync` poll, and the `GetBlackjackTableAsync`/`Deal`/`Hit`/`Stay` API calls) has **no dedicated automated tests** — the `BlackjackTableDto` and its action requests are exercised only via the shared JSON options; verify the table/controls by running the plugin against a live backend. The authoritative Blackjack rules and turn engine are tested in the **web** repo (`BlackjackTests` + `BlackjackServiceTests`).
 
 ## How To Use This Map
 

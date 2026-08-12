@@ -10,8 +10,8 @@
 
 ## Session Creation, Lists, Selection, Roster
 
-- `src/Catsino.Plugin/Ui/CatsinoWindow.cs` (create-Plinko form: default fee, min/max bet, and **Max players** — empty = unlimited)
-- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`CreatePlinkoSessionAsync(fee, minBet, maxBet, maxPlayers, …)`, per-plugin defaults incl. `DefaultMaxPlayers`)
+- `src/Catsino.Plugin/Ui/CatsinoWindow.cs` (create-session form: **game type** selector (Plinko / Blackjack), default fee, min/max bet, and **Max players** — empty = unlimited)
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`CreateSessionAsync(gameType, feePercent, minBet, maxBet, maxPlayers, …)` — sends `CreateGameSessionRequest.GameType`, accepts only `plinko`/`blackjack`; per-plugin defaults incl. `DefaultMaxPlayers`)
 - `src/Catsino.Plugin/Configuration/PluginConfiguration.cs` (`DefaultMaxPlayers`), `src/Catsino.Plugin/Security/DealerInputValidator.cs` (`TryParseMaxPlayers`/`ValidateMaxPlayers`)
 - `src/Catsino.Plugin/Runtime/SessionRosterStore.cs`
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (shows `Players: N / cap`)
@@ -28,6 +28,16 @@ Notes:
 Invite creation now depends on exact `Character Name`, exact `Home World`, and an explicit starting balance. The plugin UI and runtime both reject duplicate invites when the roster already shows the player as active or pending.
 
 **Reinvite** is the deliberate exception: the per-player roster row has a "Reinvite" button (`SessionPanelRenderer.DrawPlayerRow`) that calls `CatsinoRuntime.ReinviteAndTellAsync(sessionId, membershipId, name, world)` → `CatsinoApiClient.ReinviteAsync` (`POST api/v1/game-sessions/{sessionId}/players/{membershipId}/reinvite`). It bypasses the duplicate/active guard on purpose (redeeming resumes the active membership, wallet kept) and `/tell`s the fresh link.
+
+## Blackjack Dealer Table (Deal / Hit / Stay)
+
+- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (the **Table** sub-tab on a blackjack session hosts the panel)
+- `src/Catsino.Plugin/Ui/BlackjackPanelRenderer.cs` (dealer hand, seat rows, active-turn highlight + 45s countdown, **Deal / Hit / Stay** — Hit/Stay only enabled when table status is `dealerTurn`)
+- `src/Catsino.Plugin/Ui/CardTextures.cs` (card face/back textures from embedded `Assets/Cards/*.png` via `ITextureProvider`)
+- `src/Catsino.Plugin/Runtime/BlackjackTableStore.cs` (latest `BlackjackTableDto` per session)
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`RefreshBlackjackTableAsync` / `RefreshBlackjackTablesAsync` — the ~2s live poll for tracked blackjack sessions; hub wiring `hub.BlackjackStateChanged += … blackjackStore.Set(table)`)
+- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`GetBlackjackTableAsync`, `DealBlackjackAsync`, `DealerBlackjackHitAsync`, `DealerBlackjackStayAsync`)
+- `src/Catsino.Plugin/Backend/PluginHubProtocol.cs` + `PluginHubClient.cs` (`BlackjackStateChanged` device push)
 
 ## Deposits And Dealer Financial Actions
 
@@ -60,7 +70,7 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 
 ## Protocol Shape And Compatibility
 
-- `src/Catsino.Plugin.Contracts/` (public contract **1.4.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers`. Backend accepts `{1.3.0, 1.4.0}`. Plugin binary version `PluginVersion.Current` is currently 1.4.1.)
+- `src/Catsino.Plugin.Contracts/` (public contract **1.5.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers`, and the Blackjack table/action DTOs live here. Backend accepts `{1.4.0, 1.5.0}` (`Contract.ShippedVersion` / `Contract.Version`). Plugin binary version `PluginVersion.Current` is currently 1.5.5.)
 - `docs/protocol/backend-v1.md` + `docs/protocol/backend-v1.fixture.json`
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`
 - `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`, `ContractSerializationTests.cs`
