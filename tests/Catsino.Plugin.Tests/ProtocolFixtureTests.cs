@@ -11,7 +11,7 @@ public sealed class ProtocolFixtureTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "backend-v1.fixture.json")));
         var root = document.RootElement;
-        Assert.Equal("1.5.0", root.GetProperty("contractVersion").GetString());
+        Assert.Equal("1.6.0", root.GetProperty("contractVersion").GetString());
         var routes = root.GetProperty("routes").EnumerateArray().ToArray();
         Assert.Equal(30, routes.Length);
 
@@ -61,7 +61,7 @@ public sealed class ProtocolFixtureTests
         AssertDefinitionMatches(root, "SessionPlayerDto", new SessionPlayerDto(
             Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", SessionPlayerState.Open, 100, 50, "pending", "clear", now));
         AssertDefinitionMatches(root, "SessionRosterPlayerDto", new SessionRosterPlayerDto(
-            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 125, false, "none", "clear", now));
+            Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 125, 300, false, "none", "clear", now));
         AssertDefinitionMatches(root, "PendingInviteDto", new PendingInviteDto(
             Guid.NewGuid(), Guid.NewGuid(), "Exact Player", "Ragnarok", 100, now, now.AddMinutes(2)));
         AssertDefinitionMatches(root, "SessionRosterDto", new SessionRosterDto(Guid.NewGuid(), [], [], now));

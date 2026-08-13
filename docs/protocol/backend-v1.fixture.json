@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.5.0",
+  "contractVersion": "1.6.0",
   "serialization": {
     "propertyNames": "camelCase",
     "enums": "camelCaseStrings",
@@ -48,7 +48,7 @@
     "PayoutExecutorStatusDto": { "executorInstanceId": "guid", "isReady": "bool", "hasActiveOperation": "bool", "activeOperationId": "guid|null", "status": "string", "observedAt": "utcDateTimeOffset" },
     "GameSessionDto": { "sessionId": "guid", "gameType": "string", "feePercent": "decimal", "state": "GameSessionState", "playerCount": "int32", "totalDepositedGil": "int64", "payoutState": "string", "reconciliationState": "string", "createdAt": "utcDateTimeOffset", "openedAt": "utcDateTimeOffset|null", "closedAt": "utcDateTimeOffset|null", "maxPlayers": "int32|null" },
     "SessionPlayerDto": { "playerId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "state": "SessionPlayerState", "depositedGil": "int64", "payoutGil": "int64|null", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
-    "SessionRosterPlayerDto": { "membershipId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "tokens": "int64", "bettingLocked": "bool", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
+    "SessionRosterPlayerDto": { "membershipId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "tokens": "int64", "deposit": "int64", "bettingLocked": "bool", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
     "PendingInviteDto": { "inviteId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "initialBalanceGil": "int64", "createdAt": "utcDateTimeOffset", "expiresAt": "utcDateTimeOffset" },
     "SessionRosterDto": { "sessionId": "guid", "players": "SessionRosterPlayerDto[]", "pendingInvites": "PendingInviteDto[]", "observedAt": "utcDateTimeOffset" },
     "AdjustPlayerBalanceRequest": { "amountGil": "int64" },
@@ -75,7 +75,7 @@
     "CreateGameSessionRequest": { "gameType": "plinko", "feePercent": 0.0, "maxPlayers": 4 },
     "UpdateSessionFeeRequest": { "feePercent": 5.5 },
     "SessionPlayerDto": { "playerId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "state": "open", "depositedGil": 1000, "payoutGil": null, "payoutState": "pending", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
-    "SessionRosterPlayerDto": { "membershipId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "balanceGil": 1000, "netGil": 250, "tokens": 1250, "reservedTokens": 0, "bettingLocked": false, "payoutState": "none", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
+    "SessionRosterPlayerDto": { "membershipId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "balanceGil": 1000, "netGil": 250, "tokens": 1250, "deposit": 1000, "reservedTokens": 0, "bettingLocked": false, "payoutState": "none", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
     "PendingInviteDto": { "inviteId": "21000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Other Player", "homeWorld": "Phoenix", "initialBalanceGil": 500, "createdAt": "2026-08-05T12:10:00+00:00", "expiresAt": "2026-08-05T12:12:00+00:00" },
     "SessionRosterDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "players": [{ "membershipId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "tokens": 1250, "bettingLocked": false, "payoutState": "none", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" }], "pendingInvites": [{ "inviteId": "21000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Other Player", "homeWorld": "Phoenix", "initialBalanceGil": 500, "createdAt": "2026-08-05T12:10:00+00:00", "expiresAt": "2026-08-05T12:12:00+00:00" }], "observedAt": "2026-08-05T12:10:00+00:00" },
     "AdjustPlayerBalanceRequest": { "amountGil": -100 },

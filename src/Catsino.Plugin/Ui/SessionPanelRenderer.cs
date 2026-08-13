@@ -18,6 +18,12 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
     // Formats a gil amount with '.' thousands separators (e.g. 5000000 -> "5.000.000").
     private static readonly NumberFormatInfo DottedGil = new() { NumberGroupSeparator = ".", NumberGroupSizes = [3], NumberDecimalDigits = 0 };
     private static string FormatGilDotted(long amount) => amount.ToString("N0", DottedGil);
+    // Signed dotted gil for the Net column: "+1.000" / "0" / "-1.000" (N0 already prints the minus sign).
+    private static string FormatGilSignedDotted(long amount) => (amount > 0 ? "+" : string.Empty) + amount.ToString("N0", DottedGil);
+    // Net colour: green when the player is up on their deposit, red when down, white when even.
+    private static Vector4 NetColor(long net) => net > 0
+        ? new Vector4(0.48f, 1f, 0.69f, 1f)
+        : net < 0 ? new Vector4(1f, 0.53f, 0.58f, 1f) : new Vector4(1f, 1f, 1f, 1f);
 
     public void Draw(Guid sessionId)
     {
@@ -135,14 +141,16 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.Spacing();
         const ImGuiTableFlags flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg |
                                       ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp;
-        if (!ImGui.BeginTable("DealerSessionRoster", 4, flags))
+        if (!ImGui.BeginTable("DealerSessionRoster", 6, flags))
         {
             return;
         }
 
         ImGui.TableSetupColumn("Player", ImGuiTableColumnFlags.WidthStretch, 2f);
         ImGui.TableSetupColumn("Home World", ImGuiTableColumnFlags.WidthStretch, 1.2f);
+        ImGui.TableSetupColumn("Deposit", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Tokens", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("Net", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthStretch, 2.2f);
         ImGui.TableHeadersRow();
 
@@ -185,7 +193,13 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TableNextColumn();
         ImGui.TextUnformatted(player.HomeWorld);
         ImGui.TableNextColumn();
-        ImGui.TextUnformatted($"{player.Tokens:N0}");
+        ImGui.TextUnformatted(FormatGilDotted(player.Deposit));
+        ImGui.TableNextColumn();
+        ImGui.TextUnformatted(FormatGilDotted(player.Tokens));
+        ImGui.TableNextColumn();
+        // Net = current tokens minus what the player deposited: green if up, red if down, white if even.
+        var net = player.Tokens - player.Deposit;
+        ImGui.TextColored(NetColor(net), FormatGilSignedDotted(net));
 
         ImGui.TableNextColumn();
         var draft = runtime.ActionDrafts.GetBalanceAdjustment(key);
@@ -265,8 +279,10 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TextDisabled("Pending invite");
         ImGui.TableNextColumn();
         ImGui.TextUnformatted(invite.HomeWorld);
-        ImGui.TableNextColumn();
-        ImGui.TextUnformatted($"{invite.InitialBalanceGil:N0} gil");
+        ImGui.TableNextColumn(); // Deposit column: the invite's starting balance
+        ImGui.TextUnformatted($"{FormatGilDotted(invite.InitialBalanceGil)} gil");
+        ImGui.TableNextColumn(); // Tokens: not applicable until the invite is redeemed
+        ImGui.TableNextColumn(); // Net: not applicable yet
         ImGui.TableNextColumn();
         ImGui.TextDisabled("Pending");
         ImGui.SameLine();
@@ -297,6 +313,8 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TextDisabled("Balance");
         ImGui.SetNextItemWidth(-1);
         ImGui.InputText("##inviteBalance", ref state.InviteBalance, 20, ImGuiInputTextFlags.CharsDecimal);
+        ImGui.TableNextColumn(); // Tokens column (empty for the input row)
+        ImGui.TableNextColumn(); // Net column (empty for the input row)
         ImGui.TableNextColumn();
         ImGui.TextDisabled("New player");
         ImGui.SameLine();

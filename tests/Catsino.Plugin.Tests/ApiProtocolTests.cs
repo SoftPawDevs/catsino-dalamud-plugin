@@ -299,7 +299,7 @@ public sealed class ApiProtocolTests
             var now = DateTimeOffset.UtcNow;
             return new SessionRosterDto(
                 SessionId,
-                [new SessionRosterPlayerDto(PlayerId, SessionId, "Exact Player", "Ragnarok", 120, false, "none", "clear", now)],
+                [new SessionRosterPlayerDto(PlayerId, SessionId, "Exact Player", "Ragnarok", 120, 250, false, "none", "clear", now)],
                 [new PendingInviteDto(InviteId, SessionId, "Other Player", "Phoenix", 500, now, now.AddMinutes(2))],
                 now);
         }

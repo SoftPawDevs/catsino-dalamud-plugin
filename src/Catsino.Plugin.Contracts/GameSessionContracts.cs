@@ -68,6 +68,7 @@ public sealed record SessionRosterPlayerDto(
     string CharacterName,
     string HomeWorld,
     long Tokens,
+    long Deposit,
     bool BettingLocked,
     string PayoutState,
     string ReconciliationState,

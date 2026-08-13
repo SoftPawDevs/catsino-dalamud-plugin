@@ -190,7 +190,7 @@ public sealed class DealerSessionStateTests
         var now = DateTimeOffset.UtcNow;
         var withPlayer = new SessionRosterDto(
             sessionId,
-            [new SessionRosterPlayerDto(Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 100, false, "none", "clear", now)],
+            [new SessionRosterPlayerDto(Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 100, 200, false, "none", "clear", now)],
             [],
             now);
         var withPendingInvite = new SessionRosterDto(
@@ -208,7 +208,7 @@ public sealed class DealerSessionStateTests
         sessionId,
         [new SessionRosterPlayerDto(
             Guid.NewGuid(), sessionId, playerName, "Ragnarok", 110,
-            false, "none", "clear", observedAt)],
+            200, false, "none", "clear", observedAt)],
         [],
         observedAt);
 }

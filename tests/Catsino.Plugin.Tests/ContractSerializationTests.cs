@@ -9,8 +9,8 @@ public sealed class ContractSerializationTests
     [Fact]
     public void VersionIsStable()
     {
-        Assert.Equal("1.5.0", ContractVersion.Current);
-        Assert.Equal("1.5.5", PluginVersion.Current);
+        Assert.Equal("1.6.0", ContractVersion.Current);
+        Assert.Equal("1.6.0", PluginVersion.Current);
     }
 
     [Fact]
@@ -76,13 +76,13 @@ public sealed class ContractSerializationTests
         var sessionId = Guid.NewGuid();
         var player = new SessionRosterPlayerDto(
             Guid.NewGuid(), sessionId, "Exact Player", "Ragnarok", 750,
-            true, "queued", "clear", now);
+            1000, true, "queued", "clear", now);
         var invite = new PendingInviteDto(
             Guid.NewGuid(), sessionId, "Other Player", "Phoenix", 500, now, now.AddMinutes(2));
         var roster = new SessionRosterDto(sessionId, [player], [invite], now);
 
         Assert.Equal(
-            ["membershipId", "sessionId", "characterName", "homeWorld", "tokens", "bettingLocked", "payoutState", "reconciliationState", "joinedAt"],
+            ["membershipId", "sessionId", "characterName", "homeWorld", "tokens", "deposit", "bettingLocked", "payoutState", "reconciliationState", "joinedAt"],
             PropertyNames(player));
         Assert.Equal(
             ["inviteId", "sessionId", "characterName", "homeWorld", "initialBalanceGil", "createdAt", "expiresAt"],
