@@ -43,7 +43,7 @@ Table refresh (`RefreshBlackjackTableAsync` / `RefreshHoldemTableAsync` / the sh
 
 - `src/Catsino.Plugin/Security/ProtectedCredentialStore.cs`: local secret storage (DPAPI, per Windows user). Kept across a game logout; cleared on character change, deliberate disconnect, or a backend-rejected refresh.
 - `src/Catsino.Plugin/Security/SecretRedactor.cs`: log redaction.
-- `src/Catsino.Plugin/Security/DealerInputValidator.cs`: dealer-side validation, including the gil shorthand reader (`TryParseShorthandGil`) behind both money boxes — `TryParseBalanceAdjustment` (signed, non-zero) and `TryParseGilAmount` (zero or positive, used for the invite balance). Both accept "250k" / "2.5m" / "1.500.000", so neither field asks the dealer to type zeros the other one would have expanded.
+- `src/Catsino.Plugin/Security/DealerInputValidator.cs`: dealer-side validation, including the gil shorthand reader (`TryParseShorthandGil`) behind both money boxes — `TryParseBalanceAdjustment` (signed, non-zero) and `TryParseGilAmount` (zero or positive, used for the invite balance and the create-session bet limits). Both accept "250k" / "2.5m" / "1.500.000", so no money box asks the dealer to type zeros another one would have expanded. Without a suffix a dot is a thousands separator, so "1.5" reads as fifteen gil; every field echoes the resolved amount back.
 - `src/Catsino.Plugin/Configuration/PluginConfiguration.cs`: persistent local config, including the default dealer fee used for new sessions.
 
 ## Contracts And Docs

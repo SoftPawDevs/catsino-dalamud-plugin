@@ -86,7 +86,8 @@ public sealed class ValidationAndSecurityTests
         Assert.Null(DealerInputValidator.ValidateDeposit(open, long.MaxValue));
         Assert.NotNull(DealerInputValidator.ValidateDeposit(open, 0));
         Assert.NotNull(DealerInputValidator.ValidateDeposit(invited, 1));
-        Assert.False(DealerInputValidator.TryParseGil("1.5", out _));
+        // A shorthand that does not resolve to whole gil is refused (1.2345k would be 1234.5).
+        Assert.False(DealerInputValidator.TryParseGilAmount("1.2345k", out _));
     }
 
     [Theory]

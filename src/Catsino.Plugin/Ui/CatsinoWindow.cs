@@ -19,6 +19,9 @@ public sealed class CatsinoWindow : Window
     private string createMaxPlayers;
     private int createGameTypeIndex;
     private string validationMessage = string.Empty;
+    // "2.500.000" — dot thousands separators, as everywhere else the plugin prints gil.
+    private static readonly NumberFormatInfo DottedGil = new() { NumberGroupSeparator = ".", NumberGroupSizes = [3], NumberDecimalDigits = 0 };
+    private static string FormatGilDotted(long amount) => amount.ToString("N0", DottedGil);
     private bool busy;
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
     private readonly CatsinoRuntime runtime;
@@ -152,10 +155,12 @@ public sealed class CatsinoWindow : Window
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(120);
-        ImGui.InputText("Min bet", ref createMinBet, 20, ImGuiInputTextFlags.CharsDecimal);
+        // No CharsDecimal filter on the bet limits: they take the same k/m/b shorthand as the money boxes
+        // on the session panel ("50k", "2.5m"), and the resolved amounts are echoed under the row.
+        ImGui.InputText("Min bet", ref createMinBet, 20);
         ImGui.SameLine();
         ImGui.SetNextItemWidth(120);
-        ImGui.InputText("Max bet", ref createMaxBet, 20, ImGuiInputTextFlags.CharsDecimal);
+        ImGui.InputText("Max bet", ref createMaxBet, 20);
         var selectedGameType = GameTypeValues[createGameTypeIndex];
         var isHoldem = selectedGameType == "holdem";
 
@@ -179,10 +184,10 @@ public sealed class CatsinoWindow : Window
             {
                 validationMessage = "Default dealer fee must be between 0 and 100 with at most two decimal places.";
             }
-            else if (!DealerInputValidator.TryParseGil(createMinBet.Trim(), out var minBet) ||
-                     !DealerInputValidator.TryParseGil(createMaxBet.Trim(), out var maxBet))
+            else if (!DealerInputValidator.TryParseGilAmount(createMinBet.Trim(), out var minBet) ||
+                     !DealerInputValidator.TryParseGilAmount(createMaxBet.Trim(), out var maxBet))
             {
-                validationMessage = "Min and max bet must be whole, non-negative gil amounts.";
+                validationMessage = "Min and max bet must be whole, non-negative gil amounts. Shorthand works: 50k, 2.5m.";
             }
             else if (DealerInputValidator.ValidateBetLimits(minBet, maxBet) is { } betError)
             {
@@ -208,6 +213,12 @@ public sealed class CatsinoWindow : Window
         if (ImGui.Button("Refresh"))
         {
             Run(() => runtime.RefreshSessionsAsync());
+        }
+
+        if (DealerInputValidator.TryParseGilAmount(createMinBet.Trim(), out var minPreview) &&
+            DealerInputValidator.TryParseGilAmount(createMaxBet.Trim(), out var maxPreview))
+        {
+            ImGui.TextDisabled($"Bets: {FormatGilDotted(minPreview)} – {FormatGilDotted(maxPreview)} gil.");
         }
 
         if (isHoldem)

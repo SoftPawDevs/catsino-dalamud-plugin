@@ -10,7 +10,7 @@
 
 ## Session Creation, Lists, Selection, Roster
 
-- `src/Catsino.Plugin/Ui/CatsinoWindow.cs` (create-session form: **game type** selector (Plinko / Blackjack / Texas Hold'em / Roulette), default fee, min/max bet, and **Max players** — empty = unlimited, except Hold'em where the hint reads "max 10 players", empty means a full table, and a larger number is rejected before the request goes out)
+- `src/Catsino.Plugin/Ui/CatsinoWindow.cs` (create-session form: **game type** selector (Plinko / Blackjack / Texas Hold'em / Roulette), min/max bet taking k/m/b shorthand with the resolved amounts echoed under the row, default fee, min/max bet, and **Max players** — empty = unlimited, except Hold'em where the hint reads "max 10 players", empty means a full table, and a larger number is rejected before the request goes out)
 - `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`CreateSessionAsync(gameType, feePercent, minBet, maxBet, maxPlayers, …)` — sends `CreateGameSessionRequest.GameType`, accepts only `plinko`/`blackjack`/`holdem`/`roulette`, and resolves the cap through `DealerInputValidator.ResolveMaxPlayers`; per-plugin defaults incl. `DefaultMaxPlayers`)
 - `src/Catsino.Plugin/Configuration/PluginConfiguration.cs` (`DefaultMaxPlayers`), `src/Catsino.Plugin/Security/DealerInputValidator.cs` (`TryParseMaxPlayers`/`ValidateMaxPlayers`)
 - `src/Catsino.Plugin/Runtime/SessionRosterStore.cs`

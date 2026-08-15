@@ -116,9 +116,6 @@ public static partial class DealerInputValidator
     public static bool TryParseFee(string text, out decimal fee) =>
         decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out fee);
 
-    public static bool TryParseGil(string text, out long amount) =>
-        long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out amount);
-
     // A zero-or-positive gil amount typed the way a dealer thinks: the same k/m/b shorthand and grouping
     // separators the balance adjustment box accepts ("2.5m" = 2,500,000), so the invite balance does not
     // need a different habit from the box right next to it.

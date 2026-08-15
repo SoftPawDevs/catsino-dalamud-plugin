@@ -53,6 +53,26 @@ public sealed class BalanceAdjustmentParsingTests
         Assert.Null(DealerInputValidator.ValidateInviteBalance(amount));
     }
 
+    // The create-session bet limits read the same shorthand, so a table can be opened with "50k" / "2.5m"
+    // instead of counting zeros. Note the grouping rule: without a suffix a dot is a thousands separator,
+    // so "1.5" is fifteen gil, not one and a half — and the form echoes the resolved amounts back.
+    [Fact]
+    public void BetLimitsAcceptShorthand()
+    {
+        Assert.True(DealerInputValidator.TryParseGilAmount("50k", out var min));
+        Assert.True(DealerInputValidator.TryParseGilAmount("2.5m", out var max));
+        Assert.Equal(50_000, min);
+        Assert.Equal(2_500_000, max);
+        Assert.Null(DealerInputValidator.ValidateBetLimits(min, max));
+
+        Assert.True(DealerInputValidator.TryParseGilAmount("1.5", out var grouped));
+        Assert.Equal(15, grouped);
+
+        // A maximum below the minimum is still caught after the shorthand resolves.
+        Assert.True(DealerInputValidator.TryParseGilAmount("5m", out var high));
+        Assert.NotNull(DealerInputValidator.ValidateBetLimits(high, min));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("-1")]        // an invite cannot start a player in debt
