@@ -46,7 +46,7 @@ starting the next hand; the backend runs the streets, enforces the betting rules
 **The dealer's projection contains no hole card at all**, even after a showdown.
 
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (the **Table** sub-tab on a `holdem` session hosts the panel; the game type → renderer switch lives here)
-- `src/Catsino.Plugin/Ui/HoldemPanelRenderer.cs` (board + pot/side pots, per-seat stack/bet/status with D/SB/BB markers, active-turn highlight + 45s countdown, **Deal** + Refresh; face-down backs stand in for the hole cards the plugin never receives)
+- `src/Catsino.Plugin/Ui/HoldemPanelRenderer.cs` (board + pot/side pots, per-seat stack/bet/status with D/SB/BB markers, active-turn highlight + 45s countdown, **Deal** + Refresh; face-down backs stand in for the hole cards the plugin never receives). A finished hand shows its results for ten seconds, then the backend clears the table by itself and **Deal** lights up again.
 - `src/Catsino.Plugin/Runtime/HoldemTableStore.cs` (latest `HoldemTableDto` per session)
 - `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`DealHoldemAsync` / `RefreshHoldemTableAsync`; the shared `RefreshTableGamesAsync` poll; hub wiring `hub.HoldemStateChanged += … holdemStore.Set(table)`)
 - `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`GetHoldemTableAsync`, `DealHoldemAsync`)

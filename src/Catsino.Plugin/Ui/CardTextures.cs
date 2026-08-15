@@ -9,9 +9,10 @@ namespace Catsino.Plugin.Ui;
 // provider, which caches per frame. Card codes are [Rank][Suit], rank 0 = Ten, plus "CardBack".
 public sealed class CardTextures
 {
-    // Half the web's 86x120, then +15%, keeping the aspect ratio (the dealer sees many hands in a small panel).
-    public const float Width = 43f * 1.15f;
-    public const float Height = 60f * 1.15f;
+    // Half the web's 86x120, then scaled up twice by 15% (1.15 * 1.15), keeping the aspect ratio. Shared by
+    // the Blackjack and Hold'em dealer tables.
+    public const float Width = 43f * 1.3225f;
+    public const float Height = 60f * 1.3225f;
 
     private readonly ITextureProvider textureProvider;
     private readonly Assembly assembly = typeof(CardTextures).Assembly;

@@ -75,7 +75,7 @@ public sealed class HoldemPanelRenderer(CatsinoRuntime runtime, CardTextures car
         ImGui.SameLine();
         ImGui.TextDisabled($"| Seats: {table.Seats.Count} / {table.SeatCapacity}");
         ImGui.SameLine();
-        ImGui.TextDisabled($"| Blinds: {Dots(table.SmallBlind)} / {Dots(table.BigBlind)}");
+        ImGui.TextDisabled($"| SB {Dots(table.SmallBlind)} · BB {Dots(table.BigBlind)}");
         if (table.DeadlineAt is { } deadline && table.ActiveMembershipId is { } active)
         {
             ImGui.SameLine();
