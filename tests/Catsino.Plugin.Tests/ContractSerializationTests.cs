@@ -10,7 +10,7 @@ public sealed class ContractSerializationTests
     public void VersionIsStable()
     {
         Assert.Equal("1.10.0", ContractVersion.Current);
-        Assert.Equal("1.10.0", PluginVersion.Current);
+        Assert.Equal("1.10.1", PluginVersion.Current);
     }
 
     // The dealer's Hold'em view is the newest wire contact point between the two repositories, so its exact

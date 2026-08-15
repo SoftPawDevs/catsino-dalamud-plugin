@@ -119,10 +119,21 @@ public static partial class DealerInputValidator
     public static bool TryParseGil(string text, out long amount) =>
         long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out amount);
 
+    // A zero-or-positive gil amount typed the way a dealer thinks: the same k/m/b shorthand and grouping
+    // separators the balance adjustment box accepts ("2.5m" = 2,500,000), so the invite balance does not
+    // need a different habit from the box right next to it.
+    public static bool TryParseGilAmount(string text, out long amount) =>
+        TryParseShorthandGil(text, out amount) && amount >= 0;
+
     // Parses a signed, non-zero whole-gil balance adjustment. Accepts a case-insensitive k/m/b
     // shorthand suffix (250k = 250,000; 5m = 5,000,000; -1.5m = -1,500,000) and tolerates grouping
     // separators (dots/commas/spaces) the dealer may have typed. Rejects non-whole-gil results.
-    public static bool TryParseBalanceAdjustment(string text, out long amount)
+    public static bool TryParseBalanceAdjustment(string text, out long amount) =>
+        TryParseShorthandGil(text, out amount) && amount is not (0 or long.MinValue);
+
+    // The shared shorthand reader. Signed and allows zero; callers narrow it (an adjustment must be
+    // non-zero, an invite balance must not be negative).
+    private static bool TryParseShorthandGil(string text, out long amount)
     {
         amount = 0;
         if (string.IsNullOrWhiteSpace(text))
@@ -166,7 +177,7 @@ public static partial class DealerInputValidator
             amount = (long)product;
         }
 
-        return amount is not (0 or long.MinValue);
+        return true;
     }
 
     [GeneratedRegex("^[\\p{L}][\\p{L}'-]{1,14} [\\p{L}][\\p{L}'-]{1,14}$", RegexOptions.CultureInvariant)]

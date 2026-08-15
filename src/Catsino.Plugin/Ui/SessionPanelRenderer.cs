@@ -331,7 +331,13 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         ImGui.TableNextColumn();
         ImGui.TextDisabled("Balance");
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputText("##inviteBalance", ref state.InviteBalance, 20, ImGuiInputTextFlags.CharsDecimal);
+        // No CharsDecimal filter, for the same reason as the balance adjustment box: k/m/b shorthand
+        // ("2.5m") has to be typeable, and the preview below shows what it resolves to.
+        ImGui.InputText("##inviteBalance", ref state.InviteBalance, 20);
+        if (DealerInputValidator.TryParseGilAmount(state.InviteBalance.Trim(), out var balancePreview))
+        {
+            ImGui.TextDisabled($"({FormatGilDotted(balancePreview)})");
+        }
         ImGui.TableNextColumn(); // Tokens column (empty for the input row)
         ImGui.TableNextColumn(); // Net column (empty for the input row)
         ImGui.TableNextColumn();
@@ -347,9 +353,9 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
             {
                 state.ValidationMessage = error;
             }
-            else if (!DealerInputValidator.TryParseGil(state.InviteBalance.Trim(), out var balance))
+            else if (!DealerInputValidator.TryParseGilAmount(state.InviteBalance.Trim(), out var balance))
             {
-                state.ValidationMessage = "Invite balance must be zero or a positive whole gil amount.";
+                state.ValidationMessage = "Invite balance must be zero or a positive whole gil amount. Shorthand works: 250k, 2.5m.";
             }
             else if ((error = DealerInputValidator.ValidateInviteBalance(balance)) is not null)
             {
