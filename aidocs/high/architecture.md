@@ -97,6 +97,12 @@ that payout and clears the player from the table.
 ## Security And Secrets
 
 - Local credential storage: `src/Catsino.Plugin/Security/ProtectedCredentialStore.cs`
+- **The saved credential survives a game logout.** Logging out drops the in-memory session
+  (`CatsinoApiClient.SuspendAuthorization`) but leaves the DPAPI-sealed refresh credential on disk, so
+  logging back in on the same character reconnects the dealer without re-entering an activation key. It is
+  still wiped when a *different* character or Home World takes over, when the dealer disconnects
+  deliberately, and whenever the backend rejects a refresh — and it cannot be used by anyone else anyway:
+  the backend refuses a refresh whose character does not exactly match the dealer.
 - Log redaction: `src/Catsino.Plugin/Security/SecretRedactor.cs`
 - Dealer input validation: `src/Catsino.Plugin/Security/DealerInputValidator.cs`
 

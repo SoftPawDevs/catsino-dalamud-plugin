@@ -1030,11 +1030,23 @@ public sealed class CatsinoRuntime : IAsyncDisposable
                 }
 
                 await hub.StopAsync(cancellationToken).ConfigureAwait(false);
-                await api.InvalidateLocalAuthorizationAsync(cancellationToken).ConfigureAwait(false);
+                if (current.IsLoggedIn)
+                {
+                    // A different character (or world) is playing now, and this dealer's credential is not
+                    // theirs to hold: drop it from disk as well.
+                    await api.InvalidateLocalAuthorizationAsync(cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    // Plain logout. The saved credential stays put so logging back in on the same character
+                    // reconnects on its own; RestoreAuthorizationAsync below picks it up.
+                    api.SuspendAuthorization();
+                }
+
                 ClearDealerState();
                 SetStatus(current.IsLoggedIn
                     ? "Authorization was cleared because the character or Home World changed."
-                    : "Authorization was cleared on logout.");
+                    : "Signed out. The saved authorization is kept and reconnects when you log back in.");
             }
 
             if (!previous.IsLoggedIn && current.IsLoggedIn && !api.IsAuthorized)

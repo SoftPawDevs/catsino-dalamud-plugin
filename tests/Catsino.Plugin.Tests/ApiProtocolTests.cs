@@ -151,6 +151,38 @@ public sealed class ApiProtocolTests
         Assert.NotEqual(first, FinancialIdempotency.ForPayoutAcknowledgment(operationId, 1));
     }
 
+    // Logging out of the game must not cost the dealer their saved credential: they log back in on the same
+    // character and the plugin reconnects on its own. Signing out deliberately, or a different character
+    // taking over, still wipes it — the credential belongs to one character, and the backend enforces that
+    // on refresh.
+    [Fact]
+    public async Task Suspending_keeps_the_saved_credential_while_disconnecting_and_invalidating_drop_it()
+    {
+        var handler = new ProtocolHandler();
+        var store = new MemoryCredentialStore();
+        using var api = CreateClient(handler, store);
+        await api.AuthorizeAsync("eyJactivation.payload.signature");
+        Assert.True(api.IsAuthorized);
+        Assert.NotNull(await store.ReadAsync());
+
+        api.SuspendAuthorization();
+        Assert.False(api.IsAuthorized);
+        Assert.Equal("refresh-credential", await store.ReadAsync());
+
+        // A restore uses the credential that was kept, and brings the session back.
+        Assert.True(await api.TryRestoreAsync());
+        Assert.True(api.IsAuthorized);
+
+        // The explicit paths still clear it.
+        await api.InvalidateLocalAuthorizationAsync();
+        Assert.False(api.IsAuthorized);
+        Assert.Null(await store.ReadAsync());
+
+        await api.AuthorizeAsync("eyJactivation.payload.signature");
+        await api.DisconnectAsync();
+        Assert.Null(await store.ReadAsync());
+    }
+
     private static CatsinoApiClient CreateClient(HttpMessageHandler handler, IProtectedCredentialStore store) => new(
         new Uri("https://localhost/"),
         store,

@@ -122,6 +122,12 @@ public sealed class CatsinoApiClient : IDisposable
         await credentialStore.ClearAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    // Drops the in-memory session but KEEPS the stored refresh credential, so logging back in restores the
+    // dealer automatically instead of asking for the activation key again. Safe to keep on disk: it is
+    // DPAPI-sealed to this Windows user, and the backend refuses a refresh whose character does not exactly
+    // match the dealer's, so another character cannot pick the session up.
+    public void SuspendAuthorization() => authorization = null;
+
     public Task<PluginPairingDto> CreatePairingAsync(PluginPairingRequest request, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<PluginPairingDto>(HttpMethod.Post, "api/v1/plugin/pairings", request, cancellationToken: cancellationToken);
 
