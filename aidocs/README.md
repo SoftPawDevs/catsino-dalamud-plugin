@@ -10,11 +10,11 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 
 - It runs inside FFXIV through Dalamud.
 - It authorizes the dealer and connects outward to the backend.
-- It manages sessions, invites, player roster views, dealer actions, payout execution, and — for Blackjack sessions — the **live dealer table** (Deal / Hit / Stay) on the session's **Table** sub-tab.
-- **Two game types** can be created: `plinko` and `blackjack`. Plinko is instant; Blackjack is the turn-based table the dealer plays from the plugin while players play in the web app. The game type is chosen in the create-session UI and sent as `CreateGameSessionRequest.GameType`.
-- It stores per-plugin defaults (dealer fee, min/max bet, and an optional player cap) that pre-fill newly created sessions. The player cap is sent as `CreateGameSessionRequest.MaxPlayers` (on the wire since public contract 1.4.0; null = unlimited) and is enforced server-side at invite redemption.
+- It manages sessions, invites, player roster views, dealer actions, payout execution, and — for the turn-based games — the **live dealer table** on the session's **Table** sub-tab (Blackjack: Deal / Hit / Stay; Hold'em: Deal).
+- **Three game types** can be created: `plinko`, `blackjack` and `holdem`. Plinko is instant; Blackjack is the turn-based table the dealer plays a hand at; Texas Hold'em is player-versus-player, so the dealer only starts each hand and the backend runs the streets. The game type is chosen in the create-session UI and sent as `CreateGameSessionRequest.GameType`.
+- It stores per-plugin defaults (dealer fee, min/max bet, and an optional player cap) that pre-fill newly created sessions. The player cap is sent as `CreateGameSessionRequest.MaxPlayers` (on the wire since public contract 1.4.0; null = unlimited) and is enforced server-side at invite redemption. **Hold'em has no "unlimited"**: its tables seat at most 10 players, so the create-session UI says so, `DealerInputValidator.ValidateMaxPlayers` rejects a larger number up front, and an empty field is sent as a full table (the backend clamps anything larger anyway).
 - It sends invite requests with explicit Home World and starting balance, and blocks duplicate invites for active or already-pending players — except the per-player "Reinvite" action, which deliberately re-sends a fresh link to an active player (redeeming it resumes their membership, wallet kept).
-- It contains no authoritative balance engine, no backend secrets, no database logic, and no trusted game-outcome logic (neither Plinko results nor Blackjack cards/hand values — the backend deals every card, values every hand, runs the turn clock, and settles). The Blackjack table it renders is a server projection; the dealer's own full hand is shown, but the shoe never reaches the plugin.
+- It contains no authoritative balance engine, no backend secrets, no database logic, and no trusted game-outcome logic (neither Plinko results nor any card, hand value, betting rule or pot split — the backend deals every card, values every hand, runs the turn clock, and settles). Every table it renders is a server projection: for Blackjack the dealer's own full hand is shown but the shoe never reaches the plugin; for Hold'em the dealer's view carries **no hole card at all**, not even at showdown, because the dealer plays no hand and withholding them is the only way they cannot leak.
 - Outgoing payout execution is built directly into the dealer plugin.
 
 ## Read Order
@@ -48,16 +48,16 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 - Durable payout replay: `src/Catsino.Plugin/Payout/PersistentPayoutOutbox.cs`
 - Built-in payout executor: `src/Catsino.Plugin/Payout/BuiltInPayoutTradeExecutor.cs`
 - Main UI: `src/Catsino.Plugin/Ui/CatsinoWindow.cs`
-- Session UI and dealer actions: `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (hosts the Blackjack **Table** sub-tab)
-- Blackjack table UI + card images: `src/Catsino.Plugin/Ui/BlackjackPanelRenderer.cs` + `src/Catsino.Plugin/Ui/CardTextures.cs`
-- Live Blackjack table state (hub push + fast poll): `src/Catsino.Plugin/Runtime/BlackjackTableStore.cs` + `RefreshBlackjackTablesAsync` in `CatsinoRuntime.cs`
+- Session UI and dealer actions: `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (picks the **Table** sub-tab renderer by game type)
+- Blackjack table UI: `src/Catsino.Plugin/Ui/BlackjackPanelRenderer.cs`; Hold'em table UI: `src/Catsino.Plugin/Ui/HoldemPanelRenderer.cs`; shared card images: `src/Catsino.Plugin/Ui/CardTextures.cs`
+- Live table state (hub push + fast poll): `src/Catsino.Plugin/Runtime/BlackjackTableStore.cs` / `HoldemTableStore.cs` + `RefreshTableGamesAsync` in `CatsinoRuntime.cs`
 - Local validation and secret handling: `src/Catsino.Plugin/Security/`
 
 ## Key Invariants
 
 - Treat the plugin as untrusted from the backend point of view. (This is the internal trust model — it is **not** the public store description; that copy is the plainer "dealer's control panel, paired with the Catsino backend" in `repo.json` / `Catsino.Plugin.json`.)
-- The plugin must not become an authoritative balance or game-outcome source. For Blackjack it renders the server's table projection and submits dealer Deal/Hit/Stay; it never deals cards or values hands locally.
-- Contract versions are explicit and exact (public contract **1.5.0**).
+- The plugin must not become an authoritative balance or game-outcome source. For Blackjack it renders the server's table projection and submits dealer Deal/Hit/Stay; for Hold'em it renders the projection and submits Deal only. It never deals cards, values hands, checks a bet's legality, or splits a pot locally.
+- Contract versions are explicit and exact (public contract **1.7.0**; the backend also accepts **1.6.0** during rollout).
 - Payout execution requires a ready built-in trade executor and exact player identity.
 - One active payout operation at a time.
 - Durable outbox before backend acknowledgement.

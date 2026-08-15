@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.6.0",
+  "contractVersion": "1.7.0",
   "serialization": {
     "propertyNames": "camelCase",
     "enums": "camelCaseStrings",
@@ -106,7 +106,8 @@
       { "name": "SessionClosed", "payload": "10000000-0000-0000-0000-000000000001" },
       { "name": "DealerAuthorizationRevoked", "payload": "authorizationRevoked" },
       { "name": "ReconnectRequired", "payload": "tokenRotated" },
-      { "name": "BlackjackStateChanged", "payloadDto": "BlackjackTableDto" }
+      { "name": "BlackjackStateChanged", "payloadDto": "BlackjackTableDto" },
+      { "name": "HoldemStateChanged", "payloadDto": "HoldemTableDto" }
     ],
     "pluginToServer": [
       { "name": "ReportDepositStatus", "arguments": ["10000000-0000-0000-0000-000000000001", "20000000-0000-0000-0000-000000000002", "23000000-0000-0000-0000-000000000002", "succeeded", null] },

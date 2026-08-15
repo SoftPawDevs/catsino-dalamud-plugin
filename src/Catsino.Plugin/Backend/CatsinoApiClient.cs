@@ -177,6 +177,13 @@ public sealed class CatsinoApiClient : IDisposable
     public Task<BlackjackTableDto> DealerBlackjackStayAsync(Guid sessionId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<BlackjackTableDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/blackjack/stay", new BlackjackDealerActionRequest(sessionId), idempotencyKey, cancellationToken);
 
+    // === Texas Hold'em (dealer surface) ===
+    public Task<HoldemTableDto> GetHoldemTableAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<HoldemTableDto>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/holdem", cancellationToken: cancellationToken);
+
+    public Task<HoldemTableDto> DealHoldemAsync(Guid sessionId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<HoldemTableDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/holdem/deal", new HoldemDealRequest(sessionId), idempotencyKey, cancellationToken);
+
     public Task<IReadOnlyList<PendingInviteDto>> GetPendingInvitesAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<IReadOnlyList<PendingInviteDto>>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/invites", cancellationToken: cancellationToken);
 
@@ -512,5 +519,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.6.0";
+    public const string Current = "1.7.0";
 }

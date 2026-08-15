@@ -147,3 +147,63 @@ public sealed record BlackjackTableDto(
 
 public sealed record BlackjackDealRequest(Guid SessionId);
 public sealed record BlackjackDealerActionRequest(Guid SessionId);
+
+// === Texas Hold'em (dealer side) ===
+// Player-versus-player: the dealer does not play a hand, they only start each one — the backend runs the
+// streets, the betting rules and the settlement. This view therefore NEVER contains a hole card, not even
+// after a showdown, so the dealer cannot leak one.
+public sealed record HoldemSeatDto(
+    Guid MembershipId,
+    string Name,
+    string HomeWorld,
+    int SeatIndex,
+    long Tokens,
+    long Committed,
+    long TotalCommitted,
+    IReadOnlyList<BlackjackCardDto> Cards,
+    bool HasHiddenCards,
+    // playing | folded | allIn | won | lost
+    string Status,
+    bool IsActive,
+    bool IsButton,
+    bool IsSmallBlind,
+    bool IsBigBlind,
+    bool SittingOut,
+    string? HandDescription,
+    long? Payout,
+    long? Net);
+
+public sealed record HoldemPotDto(long Amount, IReadOnlyList<Guid> EligibleMembershipIds);
+
+// Status is idle|waitingForPlayers|preflop|flop|turn|river|showdown|settled.
+public sealed record HoldemTableDto(
+    Guid SessionId,
+    Guid? RoundId,
+    string Status,
+    IReadOnlyList<HoldemSeatDto> Seats,
+    IReadOnlyList<BlackjackCardDto> Board,
+    IReadOnlyList<HoldemPotDto> Pots,
+    long TotalPot,
+    long CurrentBet,
+    long MinRaise,
+    long SmallBlind,
+    long BigBlind,
+    Guid? ActiveMembershipId,
+    Guid? ViewerMembershipId,
+    int SeatCapacity,
+    DateTimeOffset? DeadlineAt,
+    IReadOnlyList<string> AvailableActions,
+    long CallAmount,
+    long MinRaiseTo,
+    long MaxRaiseTo,
+    DateTimeOffset ObservedAt);
+
+public sealed record HoldemDealRequest(Guid SessionId);
+
+public static class HoldemBetDefaults
+{
+    public const int TurnSeconds = 45;
+    // Players only — the dealer never takes a seat. A session's MaxPlayers may narrow a table below this,
+    // never above it; the backend clamps anything larger when the session is created.
+    public const int MaxSeats = 10;
+}

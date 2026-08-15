@@ -1,6 +1,8 @@
 # Backend Protocol v1
 
-All JSON uses contract `1.4.0` (backend accepts plugins on `{1.3.0, 1.4.0}`), camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. Contract 1.4.0 adds an optional `maxPlayers` to `CreateGameSessionRequest`/`GameSessionDto` (null = unlimited). The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
+All JSON uses contract `1.7.0` (backend accepts plugins on `{1.6.0, 1.7.0}`), camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
+
+Recent additions: `1.4.0` added an optional `maxPlayers` to `CreateGameSessionRequest`/`GameSessionDto` (null = unlimited); `1.5.0` added the Blackjack dealer surface; `1.7.0` adds the Texas Hold'em dealer surface (`HoldemTableDto` and friends). `gameType` is one of `plinko`, `blackjack`, `holdem`.
 
 `backend-v1.fixture.json` is the machine-readable contract fixture. It enumerates every route, DTO example, hub event, hub payload, and idempotency requirement without requiring the private server to reference plugin source.
 
@@ -24,6 +26,12 @@ All JSON uses contract `1.4.0` (backend accepts plugins on `{1.3.0, 1.4.0}`), ca
 - `GET /api/v1/game-sessions/{sessionId}/invites`
 - `POST /api/v1/game-sessions/{sessionId}/invites`
 - `DELETE /api/v1/game-sessions/{sessionId}/invites/{inviteId}`
+- `GET /api/v1/game-sessions/{sessionId}/blackjack`
+- `POST /api/v1/game-sessions/{sessionId}/blackjack/deal`
+- `POST /api/v1/game-sessions/{sessionId}/blackjack/hit`
+- `POST /api/v1/game-sessions/{sessionId}/blackjack/stay`
+- `GET /api/v1/game-sessions/{sessionId}/holdem`
+- `POST /api/v1/game-sessions/{sessionId}/holdem/deal`
 - `POST /api/v1/game-sessions/{sessionId}/deposits`
 - `POST /api/v1/game-sessions/{sessionId}/players/{membershipId}/balance-adjustments`
 - `GET /api/v1/game-sessions/{sessionId}/players/{membershipId}/cashout-preview`
@@ -51,8 +59,17 @@ The client connects to `/hubs/plugin` and handles:
 - `SessionClosed`
 - `DealerAuthorizationRevoked`
 - `ReconnectRequired`
+- `BlackjackStateChanged`
+- `HoldemStateChanged`
 
 It reports `ReportPayoutExecutorStatus`, `ReportOutgoingTradeStatus`, `ReportOutboxStatus`, and `ReportDepositStatus`. `QueuePayoutLeg` and `CancelPayoutOperation` are legacy hub events from the per-leg push flow; the client-driven cash-out below no longer relies on them.
+
+## Table games
+
+Blackjack and Texas Hold'em are turn-based and entirely backend-driven: the backend shuffles, deals, values every hand, runs the turn clock and books every payout. The plugin renders a projection and submits the dealer's controls.
+
+- **Blackjack** — the dealer plays a hand, so `Deal` / `Hit` / `Stay` are all dealer actions and `BlackjackTableDto` reveals the dealer's own two cards (the players' view hides the hole card until the dealer's turn).
+- **Hold'em** — players play each other for the pot, so the dealer only starts hands (`deal`); the backend runs the flop/turn/river as each betting round closes. `HoldemTableDto` is projected per audience and the **dealer audience never receives a hole card**, not even at showdown: the dealer does not need one, and withholding it is the only way it cannot leak. Blinds derive from the session's `minBet` (big blind = `minBet`, small blind = half). A Hold'em table seats at most 10 players; the backend clamps `maxPlayers` accordingly at session creation.
 
 ## Client-driven cash-out
 

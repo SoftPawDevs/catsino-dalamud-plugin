@@ -3,8 +3,8 @@
 ## Entry And UI
 
 - `src/Catsino.Plugin/Plugin.cs`: plugin entry point, command registration, window system integration.
-- `src/Catsino.Plugin/Ui/CatsinoWindow.cs`: main dealer window (incl. the create-session form's game-type selector: Plinko / Blackjack).
-- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`: session actions, roster rendering, dealer-side controls; a blackjack session gets a `Manage` / `Table` sub-tab bar, and the `Table` tab hosts the live blackjack table.
+- `src/Catsino.Plugin/Ui/CatsinoWindow.cs`: main dealer window (incl. the create-session form's game-type selector: Plinko / Blackjack / Texas Hold'em, and the Hold'em 10-seat hint + validation).
+- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`: session actions, roster rendering, dealer-side controls; a turn-based session gets a `Manage` / `Table` sub-tab bar, and the `Table` tab hosts that game's live table (blackjack or Hold'em).
 - `src/Catsino.Plugin/Ui/BlackjackPanelRenderer.cs`: the live blackjack table — dealer hand, per-seat tokens/bet/hand/status, active-turn highlight + 45s countdown, and the **Deal / Hit / Stay** controls (Hit/Stay enabled only on table status `dealerTurn`).
 - `src/Catsino.Plugin/Ui/CardTextures.cs`: card face/back textures loaded from embedded `Assets/Cards/*.png` via `ITextureProvider.GetFromManifestResource` (returns an `ImTextureID`).
 - `src/Catsino.Plugin/Ui/SessionWindow.cs`: detachable per-session window.
@@ -13,16 +13,16 @@
 
 - `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs`: main runtime state machine and orchestration layer; the payout recovery path lives here (`PollBackendStateAsync`/`SynchronizeAfterHubConnectionAsync` replay the outbox first, `RecoverOpenPayoutAsync` resumes or `ReconcileStrandedOperationAsync` reconciles open operations).
 - `src/Catsino.Plugin/Runtime/SessionRosterStore.cs`: roster cache, refresh control, stale-data protection.
-- `src/Catsino.Plugin/Runtime/BlackjackTableStore.cs`: latest `BlackjackTableDto` per session, fed by the hub push and the ~2s poll.
+- `src/Catsino.Plugin/Runtime/BlackjackTableStore.cs` / `HoldemTableStore.cs`: latest table DTO per session, fed by the hub push and the ~2s poll; a snapshot is only replaced by a strictly newer `ObservedAt`.
 - `src/Catsino.Plugin/Runtime/GameChat.cs`: in-game chat command handling for invites.
 
-Blackjack table refresh (`RefreshBlackjackTableAsync` / `RefreshBlackjackTablesAsync`) and the create-session entry (`CreateSessionAsync(gameType, …)`) both live in `CatsinoRuntime.cs`.
+Table refresh (`RefreshBlackjackTableAsync` / `RefreshHoldemTableAsync` / the shared `RefreshTableGamesAsync` poll) and the create-session entry (`CreateSessionAsync(gameType, …)`) all live in `CatsinoRuntime.cs`.
 
 ## Backend Integration
 
 - `src/Catsino.Plugin/Backend/CatsinoApiClient.cs`: HTTP surface to backend (includes `ReconcileOperationAsync` for handing a stranded, physically-opened payout to backend reconciliation, and the Blackjack dealer calls `GetBlackjackTableAsync`/`DealBlackjackAsync`/`DealerBlackjackHitAsync`/`DealerBlackjackStayAsync`).
-- `src/Catsino.Plugin/Backend/PluginHubClient.cs`: SignalR lifecycle and server-pushed commands (incl. the `BlackjackStateChanged` device push).
-- `src/Catsino.Plugin/Backend/PluginHubProtocol.cs`: hub event-name constants (incl. `BlackjackStateChanged`).
+- `src/Catsino.Plugin/Backend/PluginHubClient.cs`: SignalR lifecycle and server-pushed commands (incl. the `BlackjackStateChanged` and `HoldemStateChanged` device pushes).
+- `src/Catsino.Plugin/Backend/PluginHubProtocol.cs`: hub event-name constants (incl. `BlackjackStateChanged` and `HoldemStateChanged`).
 - `src/Catsino.Plugin/Backend/FinancialIdempotency.cs`: stable financial idempotency handling.
 
 ## Payout And Trade Execution
@@ -45,7 +45,7 @@ Blackjack table refresh (`RefreshBlackjackTableAsync` / `RefreshBlackjackTablesA
 ## Contracts And Docs
 
 - `src/Catsino.Plugin.Contracts/DealerContracts.cs`: authorization and dealer DTOs.
-- `src/Catsino.Plugin.Contracts/GameSessionContracts.cs`: session and roster DTOs, plus the Blackjack table/action DTOs (`BlackjackTableDto`, `BlackjackDealRequest`, `BlackjackDealerActionRequest`).
+- `src/Catsino.Plugin.Contracts/GameSessionContracts.cs`: session and roster DTOs, plus the Blackjack table/action DTOs (`BlackjackTableDto`, `BlackjackDealRequest`, `BlackjackDealerActionRequest`) and the Hold'em ones (`HoldemTableDto`, `HoldemSeatDto`, `HoldemPotDto`, `HoldemDealRequest`, `HoldemBetDefaults`).
 - `src/Catsino.Plugin.Contracts/PayoutContracts.cs`: payout DTOs.
 - `src/Catsino.Plugin.Contracts/ContractJson.cs`: `ContractVersion.Current = "1.5.0"` + shared JSON options.
 - `src/Catsino.Plugin/Assets/Cards/`: embedded card face + back PNGs used by `CardTextures`.

@@ -9,7 +9,7 @@ using Dalamud.Bindings.ImGui;
 
 namespace Catsino.Plugin.Ui;
 
-public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> openDetached, BlackjackPanelRenderer blackjackPanel)
+public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> openDetached, BlackjackPanelRenderer blackjackPanel, HoldemPanelRenderer holdemPanel)
 {
     private readonly Dictionary<Guid, PanelState> states = [];
     private readonly ConcurrentDictionary<SessionPlayerKey, byte> busyPlayers = new();
@@ -49,10 +49,17 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         }
 
         ImGui.PushID(sessionId.ToString("D"));
-        if (string.Equals(session.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
+        // A turn-based session keeps the normal management view, plus a "Table" sub-tab hosting the live
+        // table for that game. Plinko has no table and shows the management view alone.
+        Action<Guid>? tablePanel = session.GameType?.ToLowerInvariant() switch
         {
-            // A blackjack session keeps the normal management view, plus a "Table" sub-tab hosting the live table.
-            if (ImGui.BeginTabBar("BlackjackSessionTabs"))
+            "blackjack" => blackjackPanel.Draw,
+            "holdem" => holdemPanel.Draw,
+            _ => null
+        };
+        if (tablePanel is not null)
+        {
+            if (ImGui.BeginTabBar("TableGameSessionTabs"))
             {
                 if (ImGui.BeginTabItem("Manage"))
                 {
@@ -62,7 +69,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
 
                 if (ImGui.BeginTabItem("Table"))
                 {
-                    blackjackPanel.Draw(sessionId);
+                    tablePanel(sessionId);
                     ImGui.EndTabItem();
                 }
 

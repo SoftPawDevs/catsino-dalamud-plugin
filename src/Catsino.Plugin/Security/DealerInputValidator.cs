@@ -69,8 +69,30 @@ public static partial class DealerInputValidator
         return null;
     }
 
-    public static string? ValidateMaxPlayers(int? maxPlayers) =>
-        maxPlayers is < 1 ? "Maximum players must be at least 1 when set." : null;
+    // Texas Hold'em tables have a fixed number of seats, so the cap is checked against it here to give the
+    // dealer an immediate, readable message. The backend clamps anything larger anyway — this is only the
+    // early feedback, never the enforcement.
+    public static string? ValidateMaxPlayers(int? maxPlayers, string? gameType = null)
+    {
+        if (maxPlayers is < 1)
+        {
+            return "Maximum players must be at least 1 when set.";
+        }
+
+        if (string.Equals(gameType, "holdem", StringComparison.OrdinalIgnoreCase) && maxPlayers > HoldemBetDefaults.MaxSeats)
+        {
+            return $"Texas Hold'em supports at most {HoldemBetDefaults.MaxSeats} players.";
+        }
+
+        return null;
+    }
+
+    // The player cap a create-session request should carry for this game. Hold'em has no "unlimited": an
+    // empty field means a full table, so the value the dealer sees matches what the backend stores.
+    public static int? ResolveMaxPlayers(int? maxPlayers, string gameType) =>
+        string.Equals(gameType, "holdem", StringComparison.OrdinalIgnoreCase)
+            ? Math.Min(maxPlayers ?? HoldemBetDefaults.MaxSeats, HoldemBetDefaults.MaxSeats)
+            : maxPlayers;
 
     // Parses the optional player cap from the create-session field. Empty/whitespace = unlimited (null).
     // A set value must be a whole number >= 1.

@@ -4,7 +4,7 @@
 
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`: backend API contract expectations.
 - `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`: fixture compatibility and protocol shape.
-- `tests/Catsino.Plugin.Tests/ContractSerializationTests.cs`: DTO serialization behavior and the version pin — `VersionIsStable` asserts `ContractVersion.Current == "1.5.0"` and `PluginVersion.Current == "1.5.5"` (bump both here when releasing).
+- `tests/Catsino.Plugin.Tests/ContractSerializationTests.cs`: DTO serialization behavior and the version pin — `VersionIsStable` asserts `ContractVersion.Current == "1.7.0"` and `PluginVersion.Current == "1.7.0"` (bump both here when releasing). `HoldemTableUsesCamelCaseAndNeverCarriesHoleCards` pins the newest cross-repo wire shape and asserts the dealer view stays hole-card-free.
 
 ## Runtime And State
 
@@ -29,7 +29,7 @@
 
 ## Coverage Gaps To Know
 
-- The Blackjack dealer surface (`Ui/BlackjackPanelRenderer.cs`, `Ui/CardTextures.cs`, `Runtime/BlackjackTableStore.cs`, the `RefreshBlackjackTablesAsync` poll, and the `GetBlackjackTableAsync`/`Deal`/`Hit`/`Stay` API calls) has **no dedicated automated tests** — the `BlackjackTableDto` and its action requests are exercised only via the shared JSON options; verify the table/controls by running the plugin against a live backend. The authoritative Blackjack rules and turn engine are tested in the **web** repo (`BlackjackTests` + `BlackjackServiceTests`).
+- The table-game dealer surfaces (`Ui/BlackjackPanelRenderer.cs`, `Ui/HoldemPanelRenderer.cs`, `Ui/CardTextures.cs`, `Runtime/BlackjackTableStore.cs`, `Runtime/HoldemTableStore.cs`, the `RefreshTableGamesAsync` poll, and the table/deal/hit/stay API calls) have **no dedicated automated tests** beyond the DTO serialization pins; verify the tables/controls by running the plugin against a live backend. The authoritative rules and engines are tested in the **web** repo (`BlackjackTests` + `BlackjackServiceTests`, `HoldemTests` + `HoldemServiceTests`).
 
 ## How To Use This Map
 

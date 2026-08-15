@@ -5,12 +5,12 @@
     "Punchline": "The dealer's in-game companion for the Catsino casino.",
     "Description": "The dealer's control panel, paired with the Catsino backend.",
     "InternalName": "Catsino.Plugin",
-    "AssemblyVersion": "1.6.0.0",
+    "AssemblyVersion": "1.7.0.0",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "RepoUrl": "https://github.com/SoftPawDevs/catsino-dalamud-plugin",
-    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.6.0/Catsino.Plugin.zip?download=1",
-    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.6.0/Catsino.Plugin.zip?download=1",
+    "DownloadLinkInstall": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.7.0/Catsino.Plugin.zip?download=1",
+    "DownloadLinkUpdate": "https://github.com/SoftPawDevs/catsino-dalamud-plugin/releases/download/v1.7.0/Catsino.Plugin.zip?download=1",
     "Changelog": "The player roster now shows each player's Deposit and a colour-coded Net (tokens minus deposit) so you can see at a glance who is up or down for the session.",
     "Tags": ["dealer", "games"]
   }

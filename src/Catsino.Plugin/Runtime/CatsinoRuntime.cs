@@ -28,6 +28,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private readonly LogicalIdempotencyKeys financialKeys = new();
     private readonly SessionRosterStore rosterStore = new();
     private readonly BlackjackTableStore blackjackStore = new();
+    private readonly HoldemTableStore holdemStore = new();
     private readonly ConcurrentDictionary<SessionPlayerKey, BalanceAdjustmentSubmission> balanceAdjustments = new();
     private readonly ConcurrentDictionary<SessionPlayerKey, CashOutSubmission> cashOuts = new();
     private readonly object stateSync = new();
@@ -39,7 +40,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private DateTimeOffset nextIdentityCheck = DateTimeOffset.MinValue;
     private DateTimeOffset nextHeartbeat = DateTimeOffset.MinValue;
     private DateTimeOffset nextRosterPoll = DateTimeOffset.MinValue;
-    private DateTimeOffset nextBlackjackPoll = DateTimeOffset.MinValue;
+    private DateTimeOffset nextTableGamePoll = DateTimeOffset.MinValue;
     private CharacterIdentityDto character = new(string.Empty, string.Empty, string.Empty, false);
     private long selectionRevision;
     private long authorizationEpoch;
@@ -103,6 +104,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         // drops each nudging the dealer — collapses into at most one roster re-fetch per window.
         hub.RefreshDealerSessions += () => RunBackground(RequestDealerRefreshAsync);
         hub.BlackjackStateChanged += table => blackjackStore.Set(table);
+        hub.HoldemStateChanged += table => holdemStore.Set(table);
         hub.SessionClosed += _ => RunBackground(RefreshSessionsAsync);
         hub.DealerAuthorizationRevoked += reason => RunBackground(token => RevokeAuthorizationAsync(reason, token));
         hub.ReconnectRequired += reason => RunBackground(token => ReconnectHubAsync(reason, token));
@@ -179,6 +181,22 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     {
         RequireAuthorization();
         blackjackStore.Set(await api.GetBlackjackTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+    }
+
+    public HoldemTableDto? GetHoldemTable(Guid sessionId) => holdemStore.Get(sessionId);
+
+    // The dealer's only Hold'em control: start the next hand. The backend deals, runs every street and
+    // settles the pots — the plugin never decides a card or an outcome.
+    public async Task DealHoldemAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        holdemStore.Set(await api.DealHoldemAsync(sessionId, Guid.NewGuid(), cancellationToken).ConfigureAwait(false));
+    }
+
+    public async Task RefreshHoldemTableAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        holdemStore.Set(await api.GetHoldemTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
     }
 
     public GameSessionDto? GetSession(Guid sessionId) =>
@@ -371,9 +389,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     public async Task CreateSessionAsync(string gameType, decimal feePercent, long minBet, long maxBet, int? maxPlayers, CancellationToken cancellationToken = default)
     {
         gameType = gameType.Trim().ToLowerInvariant();
-        if (gameType is not ("plinko" or "blackjack"))
+        if (gameType is not ("plinko" or "blackjack" or "holdem"))
         {
-            throw new InvalidOperationException("Only Plinko and Blackjack sessions can be created.");
+            throw new InvalidOperationException("Only Plinko, Blackjack and Texas Hold'em sessions can be created.");
         }
 
         var feeError = DealerInputValidator.ValidateFee(feePercent, GameSessionState.Created);
@@ -388,7 +406,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             throw new InvalidOperationException(betError);
         }
 
-        var maxPlayersError = DealerInputValidator.ValidateMaxPlayers(maxPlayers);
+        var maxPlayersError = DealerInputValidator.ValidateMaxPlayers(maxPlayers, gameType);
         if (maxPlayersError is not null)
         {
             throw new InvalidOperationException(maxPlayersError);
@@ -396,6 +414,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
         SaveDefaultBetLimits(minBet, maxBet);
         SaveDefaultMaxPlayers(maxPlayers);
+        // Hold'em has a fixed number of seats, so an empty cap means "a full table", not "unlimited".
+        maxPlayers = DealerInputValidator.ResolveMaxPlayers(maxPlayers, gameType);
         var epoch = Volatile.Read(ref authorizationEpoch);
         var invariant = System.Globalization.CultureInfo.InvariantCulture;
         var maxPlayersToken = maxPlayers?.ToString(invariant) ?? "unlimited";
@@ -817,15 +837,15 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         }
 
         // Blackjack is turn-based, so the dealer's table must never lag behind the real turn even if a hub
-        // push is missed. Poll the live table for tracked blackjack sessions every couple of seconds.
-        if (api.IsAuthorized && now >= nextBlackjackPoll)
+        // push is missed. Poll the live table for tracked turn-based sessions every couple of seconds.
+        if (api.IsAuthorized && now >= nextTableGamePoll)
         {
-            nextBlackjackPoll = now.AddSeconds(2);
-            RunBackground(RefreshBlackjackTablesAsync);
+            nextTableGamePoll = now.AddSeconds(2);
+            RunBackground(RefreshTableGamesAsync);
         }
     }
 
-    private async Task RefreshBlackjackTablesAsync(CancellationToken cancellationToken)
+    private async Task RefreshTableGamesAsync(CancellationToken cancellationToken)
     {
         Guid[] sessionIds;
         lock (trackedSessionsSync)
@@ -840,14 +860,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
                 return;
             }
 
-            if (!string.Equals(GetSession(sessionId)?.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
             try
             {
-                blackjackStore.Set(await api.GetBlackjackTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+                await RefreshTableGameAsync(sessionId, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -857,6 +872,21 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             {
                 // transient; the next tick retries
             }
+        }
+    }
+
+    // Pulls the live table for one session, if it is a turn-based game. A Plinko session has no table and is
+    // skipped without a request.
+    private async Task RefreshTableGameAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        var gameType = GetSession(sessionId)?.GameType;
+        if (string.Equals(gameType, "blackjack", StringComparison.OrdinalIgnoreCase))
+        {
+            blackjackStore.Set(await api.GetBlackjackTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+        }
+        else if (string.Equals(gameType, "holdem", StringComparison.OrdinalIgnoreCase))
+        {
+            holdemStore.Set(await api.GetHoldemTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
         }
     }
 
@@ -1047,8 +1077,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         await Task.WhenAll(sessionIds.Select(sessionId =>
             rosterStore.RefreshAsync(sessionId, LoadRoster, cancellationToken))).ConfigureAwait(false);
 
-        // Blackjack tables are pushed over the hub, but poll them too (fallback + initial fill) so the dealer's
-        // Blackjack tab stays fresh even if a push is missed. A per-table error must not fail the roster refresh.
+        // Turn-based tables are pushed over the hub, but poll them too (fallback + initial fill) so the
+        // dealer's Table tab stays fresh even if a push is missed. A per-table error must not fail the
+        // roster refresh.
         foreach (var sessionId in sessionIds)
         {
             if (epoch != Volatile.Read(ref authorizationEpoch))
@@ -1056,14 +1087,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
                 return;
             }
 
-            if (!string.Equals(GetSession(sessionId)?.GameType, "blackjack", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
             try
             {
-                blackjackStore.Set(await api.GetBlackjackTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+                await RefreshTableGameAsync(sessionId, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -1116,6 +1142,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             OpenPayoutOperations = [];
             rosterStore.Clear();
             blackjackStore.Clear();
+            holdemStore.Clear();
             RemoveResolvedSubmissions();
             ActionDrafts.Clear();
             lock (trackedSessionsSync)

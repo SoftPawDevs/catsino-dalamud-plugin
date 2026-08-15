@@ -18,11 +18,33 @@ or values hands — the backend owns the shoe, the hand values, the 45s turn clo
   (`POST …/blackjack/hit`), `DealerBlackjackStayAsync` (`POST …/blackjack/stay`). Each returns the refreshed
   dealer table. Deal only includes seats that placed a bet.
 - **Live updates, two ways.** The backend device-pushes `BlackjackStateChanged` (`PluginHubProtocol.BlackjackStateChanged`,
-  wired in `PluginHubClient` → `blackjackStore.Set(table)`), and `CatsinoRuntime.RefreshBlackjackTablesAsync`
-  polls tracked blackjack sessions about every ~2s. The poll is the belt-and-suspenders guarantee that the
+  wired in `PluginHubClient` → `blackjackStore.Set(table)`), and `CatsinoRuntime.RefreshTableGamesAsync`
+  polls tracked turn-based sessions about every ~2s. The poll is the belt-and-suspenders guarantee that the
   Hit/Stay controls reflect whose turn it truly is even if a single live push is missed.
 - **State store.** `Runtime/BlackjackTableStore.cs` holds the latest `BlackjackTableDto` per session; the UI
   (`BlackjackPanelRenderer`) enables Hit/Stay only when the table status is `dealerTurn`.
+
+## Texas Hold'em Table Integration
+
+Hold'em is read-mostly plus exactly one dealer mutation. Players play each other for the pot, so the plugin
+neither deals nor decides anything: the backend owns the deck, the board, every betting rule, the 45s action
+clock and the side-pot settlement.
+
+- **Reads.** `CatsinoApiClient.GetHoldemTableAsync(sessionId)` (`GET api/v1/game-sessions/{sessionId}/holdem`)
+  returns the dealer `HoldemTableDto`. **It contains no hole card at all** — not during the hand, not at
+  showdown — and never the deck. The dealer plays no hand, so they never need one; withholding them is the
+  only way they cannot be leaked. `HoldemSeatDto.HasHiddenCards` is what the renderer turns into face-down backs.
+- **Mutation** (idempotency-keyed): `DealHoldemAsync` (`POST …/holdem/deal`) starts the next hand and returns
+  the refreshed dealer table. There is no dealer hit/stay: the backend deals the flop/turn/river itself as
+  each betting round closes.
+- **Live updates, two ways.** The backend device-pushes `HoldemStateChanged`
+  (`PluginHubProtocol.HoldemStateChanged`, wired in `PluginHubClient` → `holdemStore.Set(table)`), plus the
+  same ~2s `RefreshTableGamesAsync` poll.
+- **State store.** `Runtime/HoldemTableStore.cs` holds the latest `HoldemTableDto` per session; the UI
+  (`HoldemPanelRenderer`) enables **Deal** only when no hand is running and at least two seated players have
+  chips.
+- **Seat cap.** Ten players per table (`HoldemBetDefaults.MaxSeats`), the dealer excluded. Enforced by the
+  backend at seating and at session creation; surfaced early by `DealerInputValidator`.
 
 ## Trade Executor Boundary
 

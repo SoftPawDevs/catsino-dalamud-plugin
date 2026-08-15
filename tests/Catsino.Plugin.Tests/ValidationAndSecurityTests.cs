@@ -17,6 +17,32 @@ public sealed class ValidationAndSecurityTests
     }
 
     [Fact]
+    public void MaxPlayersMustBePositiveAndFitTheGame()
+    {
+        Assert.NotNull(DealerInputValidator.ValidateMaxPlayers(0));
+        Assert.Null(DealerInputValidator.ValidateMaxPlayers(50));                 // Plinko/Blackjack: no ceiling
+        Assert.Null(DealerInputValidator.ValidateMaxPlayers(null, "holdem"));     // unset is a full table
+        Assert.Null(DealerInputValidator.ValidateMaxPlayers(HoldemBetDefaults.MaxSeats, "holdem"));
+        // A Hold'em table has a fixed number of seats, so the dealer is told before the request goes out.
+        var tooMany = DealerInputValidator.ValidateMaxPlayers(HoldemBetDefaults.MaxSeats + 1, "holdem");
+        Assert.NotNull(tooMany);
+        Assert.Contains(HoldemBetDefaults.MaxSeats.ToString(), tooMany);
+    }
+
+    [Fact]
+    public void MaxPlayersResolvesToAFullHoldemTableWhenUnset()
+    {
+        // Hold'em has no "unlimited": an empty field must reach the backend as the full seat count so the
+        // stored cap matches the number of seats the dealer sees.
+        Assert.Equal(HoldemBetDefaults.MaxSeats, DealerInputValidator.ResolveMaxPlayers(null, "holdem"));
+        Assert.Equal(HoldemBetDefaults.MaxSeats, DealerInputValidator.ResolveMaxPlayers(99, "holdem"));
+        Assert.Equal(6, DealerInputValidator.ResolveMaxPlayers(6, "holdem"));
+        // Other games keep the existing "unset = unlimited" behaviour.
+        Assert.Null(DealerInputValidator.ResolveMaxPlayers(null, "plinko"));
+        Assert.Equal(99, DealerInputValidator.ResolveMaxPlayers(99, "blackjack"));
+    }
+
+    [Fact]
     public void FeeLocksAfterCreated()
     {
         Assert.Null(DealerInputValidator.ValidateFee(0m, GameSessionState.Created));

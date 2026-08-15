@@ -9,8 +9,47 @@ public sealed class ContractSerializationTests
     [Fact]
     public void VersionIsStable()
     {
-        Assert.Equal("1.6.0", ContractVersion.Current);
-        Assert.Equal("1.6.0", PluginVersion.Current);
+        Assert.Equal("1.7.0", ContractVersion.Current);
+        Assert.Equal("1.7.0", PluginVersion.Current);
+    }
+
+    // The dealer's Hold'em view is the newest wire contact point between the two repositories, so its exact
+    // shape is pinned here: camelCase names, string statuses (no enums), UTC timestamps — and, critically,
+    // no hole cards. The backend deliberately withholds them from the dealer audience.
+    [Fact]
+    public void HoldemTableUsesCamelCaseAndNeverCarriesHoleCards()
+    {
+        var sessionId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var membershipId = Guid.Parse("20000000-0000-0000-0000-000000000002");
+        var timestamp = new DateTimeOffset(2026, 8, 15, 12, 0, 0, TimeSpan.Zero);
+        var table = new HoldemTableDto(
+            sessionId,
+            Guid.Parse("30000000-0000-0000-0000-000000000003"),
+            "flop",
+            [new HoldemSeatDto(membershipId, "Exact Player", "Ragnarok", 0, 750_000, 50_000, 150_000, [], true, "playing", true, true, false, false, false, null, null, null)],
+            [new BlackjackCardDto(1, 3), new BlackjackCardDto(13, 2), new BlackjackCardDto(7, 0)],
+            [new HoldemPotDto(300_000, [membershipId])],
+            300_000, 50_000, 50_000, 25_000, 50_000,
+            membershipId, null, 10, timestamp.AddSeconds(45),
+            ["fold", "call", "raise"], 50_000, 100_000, 750_000,
+            timestamp);
+
+        var json = JsonSerializer.Serialize(table, ContractJson.Options);
+        Assert.Contains("\"sessionId\":\"10000000-0000-0000-0000-000000000001\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"flop\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"seatCapacity\":10", json, StringComparison.Ordinal);
+        Assert.Contains("\"totalPot\":300000", json, StringComparison.Ordinal);
+        Assert.Contains("\"observedAt\":\"2026-08-15T12:00:00+00:00\"", json, StringComparison.Ordinal);
+        // The seat carries no cards even though it is in the hand; only the face-down marker.
+        Assert.Contains("\"cards\":[]", json, StringComparison.Ordinal);
+        Assert.Contains("\"hasHiddenCards\":true", json, StringComparison.Ordinal);
+
+        var restored = JsonSerializer.Deserialize<HoldemTableDto>(json, ContractJson.Options)!;
+        Assert.Equal(table.Status, restored.Status);
+        Assert.Equal(table.SeatCapacity, restored.SeatCapacity);
+        Assert.Equal(3, restored.Board.Count);
+        Assert.Empty(Assert.Single(restored.Seats).Cards);
+        Assert.Equal(TimeSpan.Zero, restored.ObservedAt.Offset);
     }
 
     [Fact]

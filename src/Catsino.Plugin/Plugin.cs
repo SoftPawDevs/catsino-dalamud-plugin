@@ -42,8 +42,11 @@ public sealed class Plugin : IDalamudPlugin
         // ClickAddonButton, AddonMaster, throttlers, Svc) is constructed.
         ECommonsMain.Init(pluginInterface, this);
         runtime = new CatsinoRuntime(pluginInterface, playerState, framework, objectTable, targetManager, condition, gameGui, dataManager, pluginLog);
-        var blackjackPanel = new BlackjackPanelRenderer(runtime, new CardTextures(textureProvider));
-        sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId), blackjackPanel);
+        // Both card games render the same self-hosted card faces, so they share one texture cache.
+        var cardTextures = new CardTextures(textureProvider);
+        var blackjackPanel = new BlackjackPanelRenderer(runtime, cardTextures);
+        var holdemPanel = new HoldemPanelRenderer(runtime, cardTextures);
+        sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId), blackjackPanel, holdemPanel);
         window = new CatsinoWindow(runtime, sessionPanel);
         windowSystem.AddWindow(window);
         runtime.SessionRemoved += OnSessionRemoved;

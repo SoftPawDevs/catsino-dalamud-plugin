@@ -15,12 +15,12 @@
 
 ## Update Loop
 
-`CatsinoRuntime` uses the framework update hook to drive periodic tasks such as identity checks, heartbeat, session refresh, roster refresh, and recovery behavior. For blackjack sessions it also runs a ~2s live-table poll (`RefreshBlackjackTablesAsync`) so the Deal/Hit/Stay controls always reflect whose turn it is even if a `BlackjackStateChanged` hub push was missed.
+`CatsinoRuntime` uses the framework update hook to drive periodic tasks such as identity checks, heartbeat, session refresh, roster refresh, and recovery behavior. For turn-based sessions it also runs a ~2s live-table poll (`RefreshTableGamesAsync`, dispatching per game type) so the dealer controls always reflect whose turn it is even if a `BlackjackStateChanged` / `HoldemStateChanged` hub push was missed.
 
 ## Session Workflow
 
 - Session loading and selection are coordinated in `CatsinoRuntime`.
-- The Sessions tab keeps a persisted `Default Dealer Fee %` value that becomes the starting fee for newly created sessions; the create-session form also picks the **game type** (Plinko / Blackjack). A blackjack session's detail view adds a `Table` sub-tab hosting the live dealer table.
+- The Sessions tab keeps a persisted `Default Dealer Fee %` value that becomes the starting fee for newly created sessions; the create-session form also picks the **game type** (Plinko / Blackjack / Texas Hold'em) and shows the Hold'em 10-seat rule next to the player cap. A blackjack or Hold'em session's detail view adds a `Table` sub-tab hosting that game's live dealer table.
 - Session windows are opened from `Plugin.cs` and rendered through `Ui/SessionWindow.cs` and `Ui/SessionPanelRenderer.cs`.
 - Roster data is cached and refreshed through `Runtime/SessionRosterStore.cs`.
 

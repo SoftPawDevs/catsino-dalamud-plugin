@@ -23,7 +23,10 @@ public sealed class CatsinoWindow : Window
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
     private readonly CatsinoRuntime runtime;
     private readonly SessionPanelRenderer sessionPanel;
-    private static readonly string[] GameTypes = ["Plinko", "Blackjack"];
+    // Display labels and the wire values they map to — the two differ for Hold'em, whose game type is the
+    // single word "holdem".
+    private static readonly string[] GameTypes = ["Plinko", "Blackjack", "Texas Hold'em"];
+    private static readonly string[] GameTypeValues = ["plinko", "blackjack", "holdem"];
 
     public CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer sessionPanel)
         : base("Catsino###CatsinoMainWindow")
@@ -153,20 +156,24 @@ public sealed class CatsinoWindow : Window
         ImGui.SameLine();
         ImGui.SetNextItemWidth(120);
         ImGui.InputText("Max bet", ref createMaxBet, 20, ImGuiInputTextFlags.CharsDecimal);
+        var selectedGameType = GameTypeValues[createGameTypeIndex];
+        var isHoldem = selectedGameType == "holdem";
+
         ImGui.SameLine();
         ImGui.SetNextItemWidth(120);
         ImGui.InputText("Max players", ref createMaxPlayers, 12, ImGuiInputTextFlags.CharsDecimal);
         ImGui.SameLine();
-        ImGui.TextDisabled("(empty = unlimited)");
+        // A Hold'em table has a fixed number of seats, so "unlimited" does not exist for it.
+        ImGui.TextDisabled(isHoldem ? $"(Texas Hold'em: max {HoldemBetDefaults.MaxSeats} players)" : "(empty = unlimited)");
 
         ImGui.SameLine();
-        ImGui.SetNextItemWidth(120);
+        ImGui.SetNextItemWidth(150);
         ImGui.Combo("Game", ref createGameTypeIndex, GameTypes, GameTypes.Length);
 
         ImGui.SameLine();
         if (ImGui.Button($"Create {GameTypes[createGameTypeIndex]}"))
         {
-            var gameType = GameTypes[createGameTypeIndex].ToLowerInvariant();
+            var gameType = selectedGameType;
             if (!DealerInputValidator.TryParseFee(createFee, out var fee) ||
                 DealerInputValidator.ValidateFee(fee, GameSessionState.Created) is not null)
             {
@@ -183,7 +190,13 @@ public sealed class CatsinoWindow : Window
             }
             else if (!DealerInputValidator.TryParseMaxPlayers(createMaxPlayers, out var maxPlayers))
             {
-                validationMessage = "Max players must be empty (unlimited) or a whole number of at least 1.";
+                validationMessage = isHoldem
+                    ? $"Max players must be empty (a full table) or a whole number between 1 and {HoldemBetDefaults.MaxSeats}."
+                    : "Max players must be empty (unlimited) or a whole number of at least 1.";
+            }
+            else if (DealerInputValidator.ValidateMaxPlayers(maxPlayers, gameType) is { } maxPlayersError)
+            {
+                validationMessage = maxPlayersError;
             }
             else
             {
@@ -195,6 +208,11 @@ public sealed class CatsinoWindow : Window
         if (ImGui.Button("Refresh"))
         {
             Run(() => runtime.RefreshSessionsAsync());
+        }
+
+        if (isHoldem)
+        {
+            ImGui.TextDisabled($"Texas Hold'em tables seat up to {HoldemBetDefaults.MaxSeats} players (the dealer does not take a seat). Blinds come from the min bet: big blind = min bet, small blind = half of it.");
         }
 
         EndDisabled(!runtime.IsAuthorized || busy);
