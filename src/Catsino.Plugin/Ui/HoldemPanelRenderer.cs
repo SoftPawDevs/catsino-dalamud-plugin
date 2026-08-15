@@ -176,16 +176,13 @@ public sealed class HoldemPanelRenderer(CatsinoRuntime runtime, CardTextures car
             ImGui.TextColored(color ?? MutedColor, $"[{statusText}]");
 
             // Hole cards are never sent to the dealer; face-down backs keep the table readable without them.
+            // A seat with no cards gets no placeholder line: between hands that would be every seat at once,
+            // and the [Waiting] / [Leaving] badge above already says what the seat is doing.
             var drew = false;
             if (seat.HasHiddenCards)
             {
                 DrawCard(cards.Back, "??", ref drew);
                 DrawCard(cards.Back, "??", ref drew);
-            }
-
-            if (!drew)
-            {
-                ImGui.TextDisabled(seat.SittingOut ? "Leaving after this hand." : "Not in this hand.");
             }
 
             ImGui.TextUnformatted($"Stack: {Dots(seat.Tokens)}");
