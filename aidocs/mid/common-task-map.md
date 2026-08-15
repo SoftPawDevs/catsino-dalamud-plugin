@@ -48,6 +48,7 @@ payouts when it lands. Nothing at this table is secret, so the dealer's projecti
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (the **Table** sub-tab on a `roulette` session hosts the panel; the game type -> renderer switch lives here)
 - `src/Catsino.Plugin/Ui/RoulettePanelRenderer.cs` (the wheel with the ball in its pocket, every player's chips with the field named in full, last numbers, **Spin** + Refresh)
 - `src/Catsino.Plugin/Ui/RouletteTextures.cs` + `src/Catsino.Plugin/Assets/Roulette/*.png` (embedded wheel art)
+- `src/Catsino.Plugin/Ui/RouletteSounds.cs` + `Assets/Roulette/*.ogg` (spin / stop clips, NVorbis decode + NAudio WinMM output, muted via `PluginConfiguration.RouletteSoundsEnabled`)
 - `src/Catsino.Plugin/Runtime/RouletteTableStore.cs` (latest `RouletteTableDto` per session)
 - `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`SpinRouletteAsync` / `RefreshRouletteTableAsync`; the shared `RefreshTableGamesAsync` poll; hub wiring `hub.RouletteStateChanged += … rouletteStore.Set(table)`)
 - `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`GetRouletteTableAsync`, `SpinRouletteAsync`)
@@ -108,7 +109,7 @@ starting the next hand; the backend runs the streets, enforces the betting rules
 
 ## Protocol Shape And Compatibility
 
-- `src/Catsino.Plugin.Contracts/` (public contract **1.9.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers` and `DealerSessionNumber`, and the Blackjack, Hold'em and Roulette table/action DTOs plus `ManualSettlementRequest` live here. Backend accepts `{1.8.0, 1.9.0}` (`Contract.ShippedVersion` / `Contract.Version`). The plugin binary version `PluginVersion.Current` tracks the contract and is currently 1.9.0.)
+- `src/Catsino.Plugin.Contracts/` (public contract **1.10.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers` and `DealerSessionNumber`, and the Blackjack, Hold'em and Roulette table/action DTOs plus `ManualSettlementRequest` live here. Backend accepts `{1.9.0, 1.10.0}` (`Contract.ShippedVersion` / `Contract.Version`). The plugin binary version `PluginVersion.Current` tracks the contract and is currently 1.10.0.)
 - `docs/protocol/backend-v1.md` + `docs/protocol/backend-v1.fixture.json`
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`
 - `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`, `ContractSerializationTests.cs`

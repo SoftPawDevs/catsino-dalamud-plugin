@@ -63,7 +63,14 @@ the ball.
   animation up where it actually is). Below it: every player's chips grouped by player with the field named
   in full ("Corner 1/2/4/5"), the last numbers, and the single **Spin** control.
 - **The disc does not rotate, the ball does.** A spinning number ring is unreadable at ImGui panel size, so
-  the artwork is drawn as-is and only the ball moves — `roulette_pill2.png` placed at the pocket's angle.
+  the artwork is drawn as-is and only the ball moves — `roulette_pill2.png` placed at the pocket's angle, at
+  its true 20/600 size. It rides an outer track and drops onto the numbers over the last stretch of the spin,
+  the same easing curve (`easeOutQuart` for the angle, smoothstep for the drop) the browser uses.
+- **Sound.** `Ui/RouletteSounds.cs` decodes the embedded Vorbis clips once with NVorbis and plays them through
+  NAudio's WinMM output; a panel opened mid-spin seeks into the clip rather than restarting it, exactly as the
+  browser does. `PluginConfiguration.RouletteSoundsEnabled` (a checkbox on the panel) mutes it, and flipping it
+  off silences a spin already in progress. NAudio.Vorbis is deliberately NOT used: it is built against
+  NAudio 2.x and would break against the 3.x `ISampleProvider` this project resolves.
 - **The dealer decides nothing.** The backend draws the number the moment the wheel is released and books
   the payouts only when the ball lands; **Spin** just starts that clock.
 - **State:** `src/Catsino.Plugin/Runtime/RouletteTableStore.cs`, fed by the `RouletteStateChanged` hub push

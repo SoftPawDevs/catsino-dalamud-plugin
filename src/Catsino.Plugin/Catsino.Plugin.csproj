@@ -6,8 +6,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>Catsino.Plugin</AssemblyName>
     <RootNamespace>Catsino.Plugin</RootNamespace>
-    <Version>1.9.0</Version>
-    <AssemblyVersion>1.9.0.0</AssemblyVersion>
+    <Version>1.10.0</Version>
+    <AssemblyVersion>1.10.0.0</AssemblyVersion>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
@@ -15,6 +15,8 @@
     <EmbeddedResource Include="Assets\Cards\*.png" />
     <!-- Roulette board, wheel disc and ball, embedded the same way so the dealer sees the wheel spin. -->
     <EmbeddedResource Include="Assets\Roulette\*.png" />
+    <!-- The spin / stop clips, the same files the web app serves, so both surfaces sound identical. -->
+    <EmbeddedResource Include="Assets\Roulette\*.ogg" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Catsino.Plugin.Contracts\Catsino.Plugin.Contracts.csproj" />
@@ -22,6 +24,8 @@
   <ItemGroup>
     <PackageReference Include="ECommons" Version="3.2.1.17" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+    <PackageReference Include="NAudio.WinMM" Version="3.0.0" />
+    <PackageReference Include="NVorbis" Version="0.10.5" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 </Project>

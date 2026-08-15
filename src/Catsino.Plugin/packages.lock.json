@@ -30,6 +30,22 @@
           "Microsoft.AspNetCore.SignalR.Client.Core": "10.0.0"
         }
       },
+      "NAudio.WinMM": {
+        "type": "Direct",
+        "requested": "[3.0.0, )",
+        "resolved": "3.0.0",
+        "contentHash": "RfBlBk0KPNQx3OUcZtxbqhaz0sKMVTcntBtIHZYfePMA7CjawePHR4xpH+lKoVnWxppPxoAk0Bf8k1fE30RuAQ==",
+        "dependencies": {
+          "NAudio.Core": "3.0.0",
+          "NAudio.Midi": "3.0.0"
+        }
+      },
+      "NVorbis": {
+        "type": "Direct",
+        "requested": "[0.10.5, )",
+        "resolved": "0.10.5",
+        "contentHash": "o+IptCG4Avze39HrGeztC+xIp6fOOwGVAwkoa1J++4Ji1WmZ+KIKlFl5wsgxsXqBkmdpfs/vFSUproiLKYa2bw=="
+      },
       "System.Security.Cryptography.ProtectedData": {
         "type": "Direct",
         "requested": "[10.0.0, )",
@@ -139,6 +155,27 @@
         "type": "Transitive",
         "resolved": "10.0.0",
         "contentHash": "inRnbpCS0nwO/RuoZIAqxQUuyjaknOOnCEZB55KSMMjRhl0RQDttSmLSGsUJN3RQ3ocf5NDLFd2mOQViHqMK5w=="
+      },
+      "NAudio.Core": {
+        "type": "Transitive",
+        "resolved": "3.0.0",
+        "contentHash": "uEX5xkjbUQ3w8XVuqcX1iMRr0avhOdn2WFiPL2X/kF72anSJSgdLhpkxCxr6N1hQr+hWx1L5lNJJeg0sh6xBiw==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.0"
+        }
+      },
+      "NAudio.Midi": {
+        "type": "Transitive",
+        "resolved": "3.0.0",
+        "contentHash": "h3VjMTBoBAOw63W7mMrv1kHdRQZkuayTpYrUsusUolORkmgfFiMg8eM4VHwgMBcOgm14997B/r7EojavMBu6CQ==",
+        "dependencies": {
+          "NAudio.Core": "3.0.0"
+        }
+      },
+      "System.Numerics.Tensors": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
       },
       "catsino.plugin.contracts": {
         "type": "Project"

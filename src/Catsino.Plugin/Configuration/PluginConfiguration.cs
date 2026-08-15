@@ -18,4 +18,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
 
     // Optional per-plugin default player cap that pre-fills newly created sessions. null = unlimited.
     public int? DefaultMaxPlayers { get; set; }
+
+    // Whether the roulette wheel makes a sound while it spins. On by default; the dealer may be streaming.
+    public bool RouletteSoundsEnabled { get; set; } = true;
 }

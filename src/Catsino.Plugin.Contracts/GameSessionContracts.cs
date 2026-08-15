@@ -238,7 +238,8 @@ public sealed record RouletteSpinRequest(Guid SessionId);
 
 public static class RouletteBetDefaults
 {
-    public const int SpinSeconds = 8;
+    // Exactly the length of roulette_spin.ogg, the clip both surfaces play while the wheel turns.
+    public const int SpinMilliseconds = 6600;
     public const int ResultsVisibleSeconds = 10;
     public const int PocketCount = 37;
 }

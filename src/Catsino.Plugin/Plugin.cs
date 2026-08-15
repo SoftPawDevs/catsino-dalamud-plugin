@@ -18,6 +18,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly CatsinoRuntime runtime;
     private readonly CatsinoWindow window;
     private readonly SessionPanelRenderer sessionPanel;
+    private readonly RouletteSounds rouletteSounds;
     private readonly Dictionary<Guid, SessionWindow> sessionWindows = [];
     private readonly ConcurrentQueue<Guid> pendingSessionOpens = new();
     private readonly ConcurrentQueue<Guid> pendingSessionCloses = new();
@@ -46,7 +47,8 @@ public sealed class Plugin : IDalamudPlugin
         var cardTextures = new CardTextures(textureProvider);
         var blackjackPanel = new BlackjackPanelRenderer(runtime, cardTextures);
         var holdemPanel = new HoldemPanelRenderer(runtime, cardTextures);
-        var roulettePanel = new RoulettePanelRenderer(runtime, new RouletteTextures(textureProvider));
+        rouletteSounds = new RouletteSounds();
+        var roulettePanel = new RoulettePanelRenderer(runtime, new RouletteTextures(textureProvider), rouletteSounds);
         sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId), blackjackPanel, holdemPanel, roulettePanel);
         window = new CatsinoWindow(runtime, sessionPanel);
         windowSystem.AddWindow(window);
@@ -75,6 +77,7 @@ public sealed class Plugin : IDalamudPlugin
         commandManager.RemoveHandler(Command);
         windowSystem.RemoveAllWindows();
         runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        rouletteSounds.Dispose();
         ECommonsMain.Dispose();
     }
 

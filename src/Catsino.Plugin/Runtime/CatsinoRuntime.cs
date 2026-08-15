@@ -151,6 +151,19 @@ public sealed class CatsinoRuntime : IAsyncDisposable
 
     public int? DefaultMaxPlayers => configuration.DefaultMaxPlayers;
 
+    public bool RouletteSoundsEnabled => configuration.RouletteSoundsEnabled;
+
+    public void SetRouletteSoundsEnabled(bool enabled)
+    {
+        if (configuration.RouletteSoundsEnabled == enabled)
+        {
+            return;
+        }
+
+        configuration.RouletteSoundsEnabled = enabled;
+        pluginInterface.SavePluginConfig(configuration);
+    }
+
     public int PendingOutboxEvents { get; private set; }
 
     public event Action<Guid>? SessionRemoved;

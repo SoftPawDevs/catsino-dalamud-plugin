@@ -9,8 +9,8 @@ public sealed class ContractSerializationTests
     [Fact]
     public void VersionIsStable()
     {
-        Assert.Equal("1.9.0", ContractVersion.Current);
-        Assert.Equal("1.9.0", PluginVersion.Current);
+        Assert.Equal("1.10.0", ContractVersion.Current);
+        Assert.Equal("1.10.0", PluginVersion.Current);
     }
 
     // The dealer's Hold'em view is the newest wire contact point between the two repositories, so its exact
@@ -76,7 +76,7 @@ public sealed class ContractSerializationTests
             500_000,
             [1_000, 2_000, 5_000, 10_000, 20_000],
             null,
-            timestamp.AddSeconds(RouletteBetDefaults.SpinSeconds),
+            timestamp.AddMilliseconds(RouletteBetDefaults.SpinMilliseconds),
             timestamp);
 
         var json = JsonSerializer.Serialize(table, ContractJson.Options);

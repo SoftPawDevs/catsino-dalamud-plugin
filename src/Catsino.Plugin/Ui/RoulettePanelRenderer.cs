@@ -15,12 +15,15 @@ namespace Catsino.Plugin.Ui;
 // The dealer decides nothing about the outcome — the backend draws the number the moment the wheel is
 // released, and the payouts only book when the ball lands. Nothing at this table is secret, so the dealer
 // sees exactly the same table the players do.
-public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextures art)
+public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextures art, RouletteSounds sounds)
 {
     private readonly ConcurrentDictionary<Guid, byte> busySessions = new();
     private readonly ConcurrentQueue<Action> pendingUiUpdates = new();
     private readonly Dictionary<Guid, string> validationMessages = [];
     private readonly HashSet<Guid> requested = [];
+    // Which round each session is currently making noise for, and whether its landing thud is still owed.
+    private readonly Dictionary<Guid, Guid> soundedRound = [];
+    private readonly HashSet<Guid> stopOwed = [];
 
     private static readonly Vector4 ActiveColor = new(0.95f, 0.79f, 0.41f, 1f);
     private static readonly Vector4 WinColor = new(0.48f, 1f, 0.69f, 1f);
@@ -41,6 +44,12 @@ public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextur
     // The disc is 452px wide on a 600px board, and its numbered ring sits at ~86% of the disc's radius.
     private const float DiscRatio = 452f / 600f;
     private const float RingRatio = DiscRatio / 2f * 0.86f;
+    // The ball rides an outer track while the wheel turns and drops onto the numbers at the end — the same
+    // 1 -> 0.78 movement the web animation makes by scaling the ball image, expressed here as a radius.
+    private const float BallDropRatio = 0.78f;
+    private const float DropFrom = 0.72f;
+    // The ball artwork is 20px on the 600px board; drawing it any larger is what made it look oversized.
+    private const float BallHalfSize = WheelSize * 10f / 600f;
 
     // "2.500.000" — dot thousands separators, matching the rest of the plugin and the web.
     private static readonly NumberFormatInfo DottedGil = new() { NumberGroupSeparator = ".", NumberGroupSizes = [3], NumberDecimalDigits = 0 };
@@ -67,9 +76,11 @@ public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextur
         }
 
         ImGui.PushID(sessionId.ToString("D"));
-        DrawHeader(table, DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+        UpdateSounds(sessionId, table, now);
+        DrawHeader(table, now);
         ImGui.Separator();
-        DrawWheel(table, DateTimeOffset.UtcNow);
+        DrawWheel(table, now);
         ImGui.Separator();
         DrawControls(sessionId, table);
         ImGui.Separator();
@@ -120,13 +131,13 @@ public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextur
 
         if (drew)
         {
-            if (BallAngle(table, now) is { } angle && art.Ball is { } ball)
+            if (BallPlacement(table, now) is { } placement && art.Ball is { } ball)
             {
                 var centre = origin + new Vector2(WheelSize / 2f, WheelSize / 2f);
-                var radians = angle * MathF.PI / 180f;
-                var position = centre + new Vector2(MathF.Sin(radians), -MathF.Cos(radians)) * (WheelSize * RingRatio);
-                var half = WheelSize / 26f;
-                drawList.AddImage(ball, position - new Vector2(half, half), position + new Vector2(half, half));
+                var radians = placement.Degrees * MathF.PI / 180f;
+                var position = centre + new Vector2(MathF.Sin(radians), -MathF.Cos(radians)) * (WheelSize * placement.Radius);
+                var half = new Vector2(BallHalfSize, BallHalfSize);
+                drawList.AddImage(ball, position - half, position + half);
             }
 
             ImGui.Dummy(new Vector2(WheelSize, WheelSize));
@@ -149,8 +160,9 @@ public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextur
         }
     }
 
-    // Where the ball sits, in degrees clockwise from 12 o'clock, or null when no number is in play.
-    private static float? BallAngle(RouletteTableDto table, DateTimeOffset now)
+    // Where the ball sits: degrees clockwise from 12 o'clock, and how far out from the centre. Null when no
+    // number is in play. Both curves match wwwroot/roulette.js exactly, so the two surfaces move alike.
+    private static (float Degrees, float Radius)? BallPlacement(RouletteTableDto table, DateTimeOffset now)
     {
         if (table.WinningNumber is not { } number)
         {
@@ -166,15 +178,65 @@ public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextur
         var target = index * (360f / Pockets.Length);
         if (table.Status != "spinning" || table.DeadlineAt is not { } deadline)
         {
-            return target;
+            return (target, RingRatio);
         }
 
         // Phase comes from the round's deadline, so a plugin that reconnects mid-spin picks the animation
         // up where it actually is rather than starting over.
-        var remaining = (float)(deadline - now).TotalSeconds;
-        var progress = Math.Clamp(1f - remaining / RouletteBetDefaults.SpinSeconds, 0f, 1f);
+        var remaining = (float)(deadline - now).TotalMilliseconds;
+        var progress = Math.Clamp(1f - remaining / RouletteBetDefaults.SpinMilliseconds, 0f, 1f);
         var eased = 1f - MathF.Pow(1f - progress, 4f);
-        return target - (1f - eased) * 6f * 360f;
+        var degrees = target - (1f - eased) * 6f * 360f;
+
+        // The drop is a smoothstep over the last stretch of the spin, exactly as in the browser.
+        var drop = progress <= DropFrom ? 0f : (progress - DropFrom) / (1f - DropFrom);
+        var eased_drop = drop * drop * (3f - 2f * drop);
+        var outer = RingRatio / BallDropRatio;
+        return (degrees, outer + (RingRatio - outer) * eased_drop);
+    }
+
+    // The wheel is heard, not just seen: the spin clip runs for the turn of the wheel and the stop clip
+    // lands with the ball. Both are driven off the round's deadline, the same clock the animation uses, so
+    // a panel opened mid-spin joins the sound where the wheel actually is instead of restarting it.
+    private void UpdateSounds(Guid sessionId, RouletteTableDto table, DateTimeOffset now)
+    {
+        if (!runtime.RouletteSoundsEnabled)
+        {
+            stopOwed.Remove(sessionId);
+            soundedRound.Remove(sessionId);
+            return;
+        }
+
+        var round = table.RoundId;
+        if (table.Status == "spinning" && round is { } roundId && table.DeadlineAt is { } deadline)
+        {
+            if (!soundedRound.TryGetValue(sessionId, out var known) || known != roundId)
+            {
+                soundedRound[sessionId] = roundId;
+                var elapsed = RouletteBetDefaults.SpinMilliseconds - (deadline - now).TotalMilliseconds;
+                sounds.PlaySpin(Math.Max(0, elapsed) / 1000d);
+                stopOwed.Add(sessionId);
+            }
+
+            // The ball has reached its pocket: that is the moment the stop clip belongs to.
+            if (now >= deadline && stopOwed.Remove(sessionId))
+            {
+                sounds.PlayStop();
+            }
+
+            return;
+        }
+
+        // The round finished between frames (or the sweeper settled it first) — still owe the landing.
+        if (stopOwed.Remove(sessionId))
+        {
+            sounds.PlayStop();
+        }
+
+        if (table.Status is not "spinning")
+        {
+            soundedRound.Remove(sessionId);
+        }
     }
 
     private void DrawControls(Guid sessionId, RouletteTableDto table)
@@ -203,6 +265,20 @@ public sealed class RoulettePanelRenderer(CatsinoRuntime runtime, RouletteTextur
         if (ImGui.Button("Refresh"))
         {
             Run(sessionId, () => runtime.RefreshRouletteTableAsync(sessionId));
+        }
+
+        ImGui.SameLine();
+        var soundsOn = runtime.RouletteSoundsEnabled;
+        if (ImGui.Checkbox("Sound", ref soundsOn))
+        {
+            runtime.SetRouletteSoundsEnabled(soundsOn);
+            if (!soundsOn)
+            {
+                // Flipping the switch mid-spin should go quiet immediately, not at the end of the clip.
+                sounds.Silence();
+                stopOwed.Clear();
+                soundedRound.Clear();
+            }
         }
     }
 
