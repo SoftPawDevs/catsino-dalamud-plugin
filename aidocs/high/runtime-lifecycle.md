@@ -20,7 +20,7 @@
 ## Session Workflow
 
 - Session loading and selection are coordinated in `CatsinoRuntime`.
-- The Sessions tab keeps a persisted `Default Dealer Fee %` value that becomes the starting fee for newly created sessions; the create-session form also picks the **game type** (Plinko / Blackjack / Texas Hold'em) and shows the Hold'em 10-seat rule next to the player cap. A blackjack or Hold'em session's detail view adds a `Table` sub-tab hosting that game's live dealer table.
+- The Sessions tab keeps a persisted `Default Dealer Fee %` value that becomes the starting fee for newly created sessions; the create-session form also picks the **game type** (Plinko / Blackjack / Texas Hold'em / Roulette) and shows the Hold'em 10-seat rule next to the player cap. A Blackjack, Hold'em or Roulette session's detail view adds a `Table` sub-tab hosting that game's live dealer table.
 - Session windows are opened from `Plugin.cs` and rendered through `Ui/SessionWindow.cs` and `Ui/SessionPanelRenderer.cs`.
 - Roster data is cached and refreshed through `Runtime/SessionRosterStore.cs`.
 

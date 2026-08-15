@@ -46,7 +46,8 @@ public sealed class Plugin : IDalamudPlugin
         var cardTextures = new CardTextures(textureProvider);
         var blackjackPanel = new BlackjackPanelRenderer(runtime, cardTextures);
         var holdemPanel = new HoldemPanelRenderer(runtime, cardTextures);
-        sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId), blackjackPanel, holdemPanel);
+        var roulettePanel = new RoulettePanelRenderer(runtime, new RouletteTextures(textureProvider));
+        sessionPanel = new SessionPanelRenderer(runtime, sessionId => pendingSessionOpens.Enqueue(sessionId), blackjackPanel, holdemPanel, roulettePanel);
         window = new CatsinoWindow(runtime, sessionPanel);
         windowSystem.AddWindow(window);
         runtime.SessionRemoved += OnSessionRemoved;

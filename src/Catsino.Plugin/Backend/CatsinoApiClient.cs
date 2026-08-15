@@ -225,6 +225,29 @@ public sealed class CatsinoApiClient : IDisposable
             idempotencyKey,
             cancellationToken);
 
+    // Books a payout the dealer already made outside the game and clears the player from the table. The
+    // expected gross/fee/net are echoed back so the backend refuses the call if the balance moved between
+    // the quote the dealer read and the settlement they confirmed.
+    public Task<CashOutResponse?> SettleManuallyAsync(
+        Guid sessionId,
+        Guid membershipId,
+        ManualSettlementRequest request,
+        Guid idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedNullableAsync<CashOutResponse>(
+            HttpMethod.Post,
+            $"api/v1/game-sessions/{sessionId:D}/players/{membershipId:D}/manual-settlement",
+            request,
+            idempotencyKey,
+            cancellationToken);
+
+    // === Roulette (dealer surface) ===
+    public Task<RouletteTableDto> GetRouletteTableAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<RouletteTableDto>(HttpMethod.Get, $"api/v1/game-sessions/{sessionId:D}/roulette", cancellationToken: cancellationToken);
+
+    public Task<RouletteTableDto> SpinRouletteAsync(Guid sessionId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<RouletteTableDto>(HttpMethod.Post, $"api/v1/game-sessions/{sessionId:D}/roulette/spin", new RouletteSpinRequest(sessionId), idempotencyKey, cancellationToken);
+
     public Task DismissCashOutRequestAsync(Guid sessionId, Guid membershipId, Guid idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAuthorizedNoContentAsync(
             HttpMethod.Delete,
@@ -519,5 +542,5 @@ public sealed class CatsinoApiClient : IDisposable
 
 public static class PluginVersion
 {
-    public const string Current = "1.8.1";
+    public const string Current = "1.9.0";
 }

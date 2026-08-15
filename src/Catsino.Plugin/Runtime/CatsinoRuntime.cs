@@ -29,8 +29,10 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     private readonly SessionRosterStore rosterStore = new();
     private readonly BlackjackTableStore blackjackStore = new();
     private readonly HoldemTableStore holdemStore = new();
+    private readonly RouletteTableStore rouletteStore = new();
     private readonly ConcurrentDictionary<SessionPlayerKey, BalanceAdjustmentSubmission> balanceAdjustments = new();
     private readonly ConcurrentDictionary<SessionPlayerKey, CashOutSubmission> cashOuts = new();
+    private readonly ConcurrentDictionary<SessionPlayerKey, ManualSettlementSubmission> manualSettlements = new();
     private readonly object stateSync = new();
     private readonly object trackedSessionsSync = new();
     private readonly HashSet<Guid> trackedSessions = [];
@@ -105,6 +107,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         hub.RefreshDealerSessions += () => RunBackground(RequestDealerRefreshAsync);
         hub.BlackjackStateChanged += table => blackjackStore.Set(table);
         hub.HoldemStateChanged += table => holdemStore.Set(table);
+        hub.RouletteStateChanged += table => rouletteStore.Set(table);
         hub.SessionClosed += _ => RunBackground(RefreshSessionsAsync);
         hub.DealerAuthorizationRevoked += reason => RunBackground(token => RevokeAuthorizationAsync(reason, token));
         hub.ReconnectRequired += reason => RunBackground(token => ReconnectHubAsync(reason, token));
@@ -199,6 +202,22 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         holdemStore.Set(await api.GetHoldemTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
     }
 
+    public RouletteTableDto? GetRouletteTable(Guid sessionId) => rouletteStore.Get(sessionId);
+
+    // The dealer's only roulette control: release the ball. The backend picks the number the moment the
+    // wheel starts, but the money only moves when the ball lands, so the spin here is not a settlement.
+    public async Task SpinRouletteAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        rouletteStore.Set(await api.SpinRouletteAsync(sessionId, Guid.NewGuid(), cancellationToken).ConfigureAwait(false));
+    }
+
+    public async Task RefreshRouletteTableAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        RequireAuthorization();
+        rouletteStore.Set(await api.GetRouletteTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+    }
+
     public GameSessionDto? GetSession(Guid sessionId) =>
         SelectedSession?.SessionId == sessionId
             ? SelectedSession
@@ -208,6 +227,8 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         balanceAdjustments.GetValueOrDefault(player);
 
     public CashOutSubmission? GetCashOut(SessionPlayerKey player) => cashOuts.GetValueOrDefault(player);
+
+    public ManualSettlementSubmission? GetManualSettlement(SessionPlayerKey player) => manualSettlements.GetValueOrDefault(player);
 
     public async Task AuthorizeAsync(string activationJwt, CancellationToken cancellationToken = default)
     {
@@ -389,9 +410,9 @@ public sealed class CatsinoRuntime : IAsyncDisposable
     public async Task CreateSessionAsync(string gameType, decimal feePercent, long minBet, long maxBet, int? maxPlayers, CancellationToken cancellationToken = default)
     {
         gameType = gameType.Trim().ToLowerInvariant();
-        if (gameType is not ("plinko" or "blackjack" or "holdem"))
+        if (gameType is not ("plinko" or "blackjack" or "holdem" or "roulette"))
         {
-            throw new InvalidOperationException("Only Plinko, Blackjack and Texas Hold'em sessions can be created.");
+            throw new InvalidOperationException("Only Plinko, Blackjack, Texas Hold'em and Roulette sessions can be created.");
         }
 
         var feeError = DealerInputValidator.ValidateFee(feePercent, GameSessionState.Created);
@@ -753,6 +774,68 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         await TryRefreshRosterAfterMutationAsync(player.SessionId, cancellationToken).ConfigureAwait(false);
     }
 
+    // === Manual settlement ==========================================================================
+    // "I already paid this player outside the game — book it and clear them from the table." The quote is
+    // fetched first and shown unchanged, because the dealer needs the exact NET before they can do the
+    // marketboard trade; only after that trade do they come back and confirm.
+    public async Task RequestManualSettlementPreviewAsync(SessionPlayerKey player, CancellationToken cancellationToken = default)
+    {
+        _ = RequireRosterPlayer(player);
+        if (manualSettlements.TryGetValue(player, out var existing) && existing.State == DealerActionState.Sending)
+        {
+            throw new InvalidOperationException("A settlement is already being submitted for this member.");
+        }
+
+        var preview = await api.GetPlayerCashOutPreviewAsync(player.SessionId, player.MembershipId, cancellationToken).ConfigureAwait(false);
+        manualSettlements[player] = new ManualSettlementSubmission(player, preview);
+        SetStatus("Pay the player, then confirm the settlement to clear them from the table.");
+    }
+
+    public void CancelManualSettlement(SessionPlayerKey player)
+    {
+        if (manualSettlements.TryGetValue(player, out var submission) &&
+            submission.State == DealerActionState.Failed && !submission.CanDiscardFailure)
+        {
+            throw new InvalidOperationException("Retry this ambiguous settlement with its existing idempotency key.");
+        }
+
+        manualSettlements.TryRemove(player, out _);
+    }
+
+    public async Task SubmitManualSettlementAsync(SessionPlayerKey player, CancellationToken cancellationToken = default)
+    {
+        var submission = manualSettlements.GetValueOrDefault(player)
+            ?? throw new InvalidOperationException("Fetch and review the settlement quote first.");
+        var rosterPlayer = RequireRosterPlayer(player);
+        submission.MarkSending();
+        try
+        {
+            // The quote is echoed back: if the balance moved since the dealer read it, the backend refuses
+            // rather than booking a different number than the one the dealer actually paid.
+            await api.SettleManuallyAsync(
+                player.SessionId,
+                player.MembershipId,
+                new ManualSettlementRequest(
+                    true,
+                    submission.Preview.Gross,
+                    submission.Preview.Fee,
+                    submission.Preview.Net),
+                submission.IdempotencyKey,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            submission.MarkFailed(exception.Message, IsDefinitiveRejection(exception));
+            SetStatus($"Settlement failed. Retry retains idempotency key {submission.IdempotencyKey:D}.");
+            throw;
+        }
+
+        submission.MarkSucceeded();
+        manualSettlements.TryRemove(player, out _);
+        SetStatus($"Settled {rosterPlayer.CharacterName}@{rosterPlayer.HomeWorld} manually and cleared them from the table.");
+        await TryRefreshRosterAfterMutationAsync(player.SessionId, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task DismissCashOutRequestAsync(SessionPlayerKey player, CancellationToken cancellationToken = default)
     {
         _ = RequireRosterPlayer(player);
@@ -887,6 +970,10 @@ public sealed class CatsinoRuntime : IAsyncDisposable
         else if (string.Equals(gameType, "holdem", StringComparison.OrdinalIgnoreCase))
         {
             holdemStore.Set(await api.GetHoldemTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
+        }
+        else if (string.Equals(gameType, "roulette", StringComparison.OrdinalIgnoreCase))
+        {
+            rouletteStore.Set(await api.GetRouletteTableAsync(sessionId, cancellationToken).ConfigureAwait(false));
         }
     }
 
@@ -1143,6 +1230,7 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             rosterStore.Clear();
             blackjackStore.Clear();
             holdemStore.Clear();
+            rouletteStore.Clear();
             RemoveResolvedSubmissions();
             ActionDrafts.Clear();
             lock (trackedSessionsSync)
@@ -1180,6 +1268,15 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             }
         }
 
+        foreach (var player in manualSettlements.Keys.Where(item => item.SessionId == sessionId).ToArray())
+        {
+            if (manualSettlements.TryGetValue(player, out var submission) && !MustPreserve(submission.State, submission.CanDiscardFailure))
+            {
+                manualSettlements.TryRemove(player, out _);
+            }
+        }
+
+        rouletteStore.Remove(sessionId);
         if (notify)
         {
             SessionRemoved?.Invoke(sessionId);
@@ -1309,6 +1406,14 @@ public sealed class CatsinoRuntime : IAsyncDisposable
             if (!MustPreserve(item.Value.State, item.Value.CanDiscardFailure))
             {
                 cashOuts.TryRemove(item.Key, out _);
+            }
+        }
+
+        foreach (var item in manualSettlements.ToArray())
+        {
+            if (!MustPreserve(item.Value.State, item.Value.CanDiscardFailure))
+            {
+                manualSettlements.TryRemove(item.Key, out _);
             }
         }
     }

@@ -1,8 +1,8 @@
 # Backend Protocol v1
 
-All JSON uses contract `1.8.0` (backend accepts plugins on `{1.7.0, 1.8.0}`), camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
+All JSON uses contract `1.9.0` (backend accepts plugins on `{1.8.0, 1.9.0}`), camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
 
-Recent additions: `1.4.0` added an optional `maxPlayers` to `CreateGameSessionRequest`/`GameSessionDto` (null = unlimited); `1.5.0` added the Blackjack dealer surface; `1.7.0` added the Texas Hold'em dealer surface (`HoldemTableDto` and friends); `1.8.0` adds `GameSessionDto.DealerSessionNumber`, the per-dealer "#1", "#2" label. `gameType` is one of `plinko`, `blackjack`, `holdem`.
+Recent additions: `1.4.0` added an optional `maxPlayers` to `CreateGameSessionRequest`/`GameSessionDto` (null = unlimited); `1.5.0` added the Blackjack dealer surface; `1.7.0` added the Texas Hold'em dealer surface (`HoldemTableDto` and friends); `1.8.0` added `GameSessionDto.DealerSessionNumber`, the per-dealer "#1", "#2" label; `1.9.0` adds the Roulette dealer surface (`RouletteTableDto` and friends) and `ManualSettlementRequest`. `gameType` is one of `plinko`, `blackjack`, `holdem`, `roulette`.
 
 `backend-v1.fixture.json` is the machine-readable contract fixture. It enumerates every route, DTO example, hub event, hub payload, and idempotency requirement without requiring the private server to reference plugin source.
 
@@ -32,10 +32,13 @@ Recent additions: `1.4.0` added an optional `maxPlayers` to `CreateGameSessionRe
 - `POST /api/v1/game-sessions/{sessionId}/blackjack/stay`
 - `GET /api/v1/game-sessions/{sessionId}/holdem`
 - `POST /api/v1/game-sessions/{sessionId}/holdem/deal`
+- `GET /api/v1/game-sessions/{sessionId}/roulette`
+- `POST /api/v1/game-sessions/{sessionId}/roulette/spin`
 - `POST /api/v1/game-sessions/{sessionId}/deposits`
 - `POST /api/v1/game-sessions/{sessionId}/players/{membershipId}/balance-adjustments`
 - `GET /api/v1/game-sessions/{sessionId}/players/{membershipId}/cashout-preview`
 - `POST /api/v1/game-sessions/{sessionId}/players/{membershipId}/cashouts`
+- `POST /api/v1/game-sessions/{sessionId}/players/{membershipId}/manual-settlement`
 - `DELETE /api/v1/game-sessions/{sessionId}`
 - `POST /api/v1/payout-events`
 - `POST /api/v1/payout-events/{operationId}/{sequenceNumber}/ack`
@@ -66,10 +69,15 @@ It reports `ReportPayoutExecutorStatus`, `ReportOutgoingTradeStatus`, `ReportOut
 
 ## Table games
 
-Blackjack and Texas Hold'em are turn-based and entirely backend-driven: the backend shuffles, deals, values every hand, runs the turn clock and books every payout. The plugin renders a projection and submits the dealer's controls.
+Blackjack, Texas Hold'em and Roulette are entirely backend-driven: the backend shuffles, deals, values every hand, draws the winning pocket, runs the clocks and books every payout. The plugin renders a projection and submits the dealer's controls.
 
 - **Blackjack** — the dealer plays a hand, so `Deal` / `Hit` / `Stay` are all dealer actions and `BlackjackTableDto` reveals the dealer's own two cards (the players' view hides the hole card until the dealer's turn).
 - **Hold'em** — players play each other for the pot, so the dealer only starts hands (`deal`); the backend runs the flop/turn/river as each betting round closes. `HoldemTableDto` is projected per audience and the **dealer audience never receives a hole card**, not even at showdown: the dealer does not need one, and withholding it is the only way it cannot leak. Blinds derive from the session's `minBet` (big blind = `minBet`, small blind = half). A Hold'em table seats at most 10 players; the backend clamps `maxPlayers` accordingly at session creation.
+- **Roulette** — a shared round against the house on a fair European wheel (37 pockets, single zero, 36/37 expected return on every field). The dealer only releases the ball (`spin`). Nothing at this table is secret, so `RouletteTableDto` is ONE shared view: it carries every player's bets with their owner's name, and the dealer receives exactly what the players do. `winningNumber` is populated the moment the wheel is released — the clients need it to animate the ball — but the payouts are only booked when `deadlineAt` passes (8s), by which point betting has long closed. The results stay visible for 10s and the round then reopens by itself.
+
+## Manual settlement
+
+`POST /api/v1/game-sessions/{sessionId}/players/{membershipId}/manual-settlement` books a payout the dealer made **outside the game** (a marketboard sale, when the amount dwarfs what 1M-per-trade payouts can carry) and clears the player from the table. It is the one payout path with no batch, no leg and no trade: the plugin fetches the ordinary cash-out quote, shows the dealer the exact **net to pay**, the dealer performs the trade themselves, and only then confirms. `ManualSettlementRequest` echoes `expectedGross`/`expectedFee`/`expectedNet` so the backend refuses if the balance moved in between; it also refuses while a cash-out is active or while any chips are still reserved in a live round. The dealer fee applies exactly as it would for a traded cash-out.
 
 ## Client-driven cash-out
 

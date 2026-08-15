@@ -24,6 +24,37 @@ or values hands — the backend owns the shoe, the hand values, the 45s turn clo
 - **State store.** `Runtime/BlackjackTableStore.cs` holds the latest `BlackjackTableDto` per session; the UI
   (`BlackjackPanelRenderer`) enables Hit/Stay only when the table status is `dealerTurn`.
 
+## Roulette Table Integration
+
+Roulette is read-mostly plus exactly one dealer mutation, and — unlike Hold'em — the dealer's payload is the
+same one the players get: every chip, whose it is, and the winning number. There is nothing to withhold.
+
+- **Reads.** `CatsinoApiClient.GetRouletteTableAsync(sessionId)` (`GET api/v1/game-sessions/{sessionId}/roulette`)
+  returns the shared `RouletteTableDto`: every bet with its owner's name, the total staked, the winning
+  number once the wheel is released, the recent numbers, and the table's bet limits.
+- **Mutation** (idempotency-keyed): `SpinRouletteAsync` (`POST .../roulette/spin`) releases the ball. The
+  backend draws the number immediately but books the payouts only when the 8s deadline passes, so the spin
+  is not a settlement.
+- **Live updates, two ways.** The backend device-pushes `RouletteStateChanged`
+  (`PluginHubProtocol.RouletteStateChanged`, wired in `PluginHubClient` -> `rouletteStore.Set(table)`), plus
+  the same ~2s `RefreshTableGamesAsync` poll.
+- **State store.** `Runtime/RouletteTableStore.cs` holds the latest `RouletteTableDto` per session; the UI
+  (`RoulettePanelRenderer`) enables **Spin** only while betting is open and at least one chip is down.
+
+## Manual Settlement Integration (a payout made outside the game)
+
+- **Read.** The quote comes from the ordinary `GetPlayerCashOutPreviewAsync` — the same gross/fee/net a
+  normal cash-out would produce, because the fee applies either way.
+- **Mutation** (idempotency-keyed): `SettleManuallyAsync`
+  (`POST api/v1/game-sessions/{sessionId}/players/{membershipId}/manual-settlement`) with
+  `ManualSettlementRequest(confirmAllAvailable, expectedGross, expectedFee, expectedNet)`. The echo is what
+  lets the backend refuse a settlement whose amount moved between the dealer reading it and confirming it.
+- **No payout batch is created and nothing is traded**, so `PayoutBatchCoordinator` is not involved at all —
+  this is the one payout path the plugin does not execute. The roster refreshes afterwards and the player is
+  gone from the table.
+- **Failure handling** matches a cash-out: an ambiguous failure keeps the submission and its idempotency key
+  so the retry is the same operation, not a second payout.
+
 ## Texas Hold'em Table Integration
 
 Hold'em is read-mostly plus exactly one dealer mutation. Players play each other for the pot, so the plugin

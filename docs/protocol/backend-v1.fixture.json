@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.8.0",
+  "contractVersion": "1.9.0",
   "serialization": {
     "propertyNames": "camelCase",
     "enums": "camelCaseStrings",
@@ -9,111 +9,843 @@
     "timestamps": "utcDateTimeOffset"
   },
   "routes": [
-    { "operation": "authorizeDealer", "method": "POST", "path": "/api/v1/dealers/authorize", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "AuthorizeDealerRequest", "responseDto": "DealerAuthorizationDto" },
-    { "operation": "refreshDealer", "method": "POST", "path": "/api/v1/dealers/refresh", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "RefreshDealerRequest", "responseDto": "DealerAuthorizationDto" },
-    { "operation": "disconnectDealer", "method": "POST", "path": "/api/v1/dealers/disconnect", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "dealerDisconnect", "responseDto": null },
-    { "operation": "createPluginPairing", "method": "POST", "path": "/api/v1/plugin/pairings", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "PluginPairingRequest", "responseDto": "PluginPairingDto" },
-    { "operation": "pluginHeartbeat", "method": "POST", "path": "/api/v1/plugin/pairings/{pairingId}/heartbeat", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "PluginHeartbeatRequest", "responseDto": null },
-    { "operation": "reportPayoutExecutorStatus", "method": "POST", "path": "/api/v1/payout-executor/status", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "PayoutExecutorStatusDto", "responseDto": null },
-    { "operation": "listGameSessions", "method": "GET", "path": "/api/v1/game-sessions", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "GameSessionDto[]" },
-    { "operation": "getActiveGameSession", "method": "GET", "path": "/api/v1/game-sessions/active", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "GameSessionDto|null" },
-    { "operation": "getGameSession", "method": "GET", "path": "/api/v1/game-sessions/{sessionId}", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "GameSessionDto" },
-    { "operation": "createGameSession", "method": "POST", "path": "/api/v1/game-sessions", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "CreateGameSessionRequest", "responseDto": "GameSessionDto" },
-    { "operation": "updateSessionFee", "method": "PATCH", "path": "/api/v1/game-sessions/{sessionId}/fee", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "UpdateSessionFeeRequest", "responseDto": "GameSessionDto" },
-    { "operation": "openGameSession", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/open", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": null, "responseDto": "GameSessionDto" },
-    { "operation": "closeGameSession", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/close", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": null, "responseDto": "GameSessionDto" },
-    { "operation": "listSessionPlayers", "method": "GET", "path": "/api/v1/game-sessions/{sessionId}/players", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "SessionPlayerDto[]" },
-    { "operation": "getSessionRoster", "method": "GET", "path": "/api/v1/game-sessions/{sessionId}/roster", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "SessionRosterDto" },
-    { "operation": "listPendingInvites", "method": "GET", "path": "/api/v1/game-sessions/{sessionId}/invites", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "PendingInviteDto[]" },
-    { "operation": "createInvite", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/invites", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": "CreateInviteRequest", "responseDto": "InviteDto" },
-    { "operation": "cancelInvite", "method": "DELETE", "path": "/api/v1/game-sessions/{sessionId}/invites/{inviteId}", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": null },
-    { "operation": "createManualDeposit", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/deposits", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "CreateManualDepositRequest", "responseDto": "DepositDto" },
-    { "operation": "adjustPlayerBalance", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/players/{membershipId}/balance-adjustments", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "AdjustPlayerBalanceRequest", "responseDto": "SessionRosterPlayerDto" },
-    { "operation": "previewDealerCashOut", "method": "GET", "path": "/api/v1/game-sessions/{sessionId}/players/{membershipId}/cashout-preview", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "CashOutPreviewResponse" },
-    { "operation": "startDealerCashOut", "method": "POST", "path": "/api/v1/game-sessions/{sessionId}/players/{membershipId}/cashouts", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "DealerCashOutRequest", "responseDto": "CashOutResponse|null" },
-    { "operation": "removeGameSession", "method": "DELETE", "path": "/api/v1/game-sessions/{sessionId}", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "SessionRemovalDto" },
-    { "operation": "reportPayoutEvent", "method": "POST", "path": "/api/v1/payout-events", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "PayoutEventDto", "responseDto": "PayoutEventAckDto" },
-    { "operation": "acknowledgePayoutEvent", "method": "POST", "path": "/api/v1/payout-events/{operationId}/{sequenceNumber}/ack", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "PayoutEventAckDto", "responseDto": null },
-    { "operation": "listOpenPayoutOperations", "method": "GET", "path": "/api/v1/payout-operations/open", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "PayoutOperationDto[]" },
-    { "operation": "retryCashout", "method": "POST", "path": "/api/v1/cashouts/{operationId}/retry", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "RetryCashoutRequest", "responseDto": "PayoutOperationDto" },
-    { "operation": "reconcilePayoutOperation", "method": "POST", "path": "/api/v1/payout-operations/{operationId}/reconcile", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "ReconcileOperationRequest", "responseDto": "CashOutResponse" },
-    { "operation": "settleCashOut", "method": "POST", "path": "/api/v1/cashouts/{cashOutId}/settle", "financialMutation": true, "idempotencyKeyRequired": true, "requestDto": "CashOutSettlementRequest", "responseDto": "CashOutResponse" },
-    { "operation": "listOpenCashOuts", "method": "GET", "path": "/api/v1/cashouts/open", "financialMutation": false, "idempotencyKeyRequired": false, "requestDto": null, "responseDto": "OpenCashOutDto[]" }
+    {
+      "operation": "authorizeDealer",
+      "method": "POST",
+      "path": "/api/v1/dealers/authorize",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": "AuthorizeDealerRequest",
+      "responseDto": "DealerAuthorizationDto"
+    },
+    {
+      "operation": "refreshDealer",
+      "method": "POST",
+      "path": "/api/v1/dealers/refresh",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": "RefreshDealerRequest",
+      "responseDto": "DealerAuthorizationDto"
+    },
+    {
+      "operation": "disconnectDealer",
+      "method": "POST",
+      "path": "/api/v1/dealers/disconnect",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": "dealerDisconnect",
+      "responseDto": null
+    },
+    {
+      "operation": "createPluginPairing",
+      "method": "POST",
+      "path": "/api/v1/plugin/pairings",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": "PluginPairingRequest",
+      "responseDto": "PluginPairingDto"
+    },
+    {
+      "operation": "pluginHeartbeat",
+      "method": "POST",
+      "path": "/api/v1/plugin/pairings/{pairingId}/heartbeat",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": "PluginHeartbeatRequest",
+      "responseDto": null
+    },
+    {
+      "operation": "reportPayoutExecutorStatus",
+      "method": "POST",
+      "path": "/api/v1/payout-executor/status",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": "PayoutExecutorStatusDto",
+      "responseDto": null
+    },
+    {
+      "operation": "listGameSessions",
+      "method": "GET",
+      "path": "/api/v1/game-sessions",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "GameSessionDto[]"
+    },
+    {
+      "operation": "getActiveGameSession",
+      "method": "GET",
+      "path": "/api/v1/game-sessions/active",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "GameSessionDto|null"
+    },
+    {
+      "operation": "getGameSession",
+      "method": "GET",
+      "path": "/api/v1/game-sessions/{sessionId}",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "GameSessionDto"
+    },
+    {
+      "operation": "createGameSession",
+      "method": "POST",
+      "path": "/api/v1/game-sessions",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "CreateGameSessionRequest",
+      "responseDto": "GameSessionDto"
+    },
+    {
+      "operation": "updateSessionFee",
+      "method": "PATCH",
+      "path": "/api/v1/game-sessions/{sessionId}/fee",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "UpdateSessionFeeRequest",
+      "responseDto": "GameSessionDto"
+    },
+    {
+      "operation": "openGameSession",
+      "method": "POST",
+      "path": "/api/v1/game-sessions/{sessionId}/open",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": null,
+      "responseDto": "GameSessionDto"
+    },
+    {
+      "operation": "closeGameSession",
+      "method": "POST",
+      "path": "/api/v1/game-sessions/{sessionId}/close",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": null,
+      "responseDto": "GameSessionDto"
+    },
+    {
+      "operation": "listSessionPlayers",
+      "method": "GET",
+      "path": "/api/v1/game-sessions/{sessionId}/players",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "SessionPlayerDto[]"
+    },
+    {
+      "operation": "getSessionRoster",
+      "method": "GET",
+      "path": "/api/v1/game-sessions/{sessionId}/roster",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "SessionRosterDto"
+    },
+    {
+      "operation": "listPendingInvites",
+      "method": "GET",
+      "path": "/api/v1/game-sessions/{sessionId}/invites",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "PendingInviteDto[]"
+    },
+    {
+      "operation": "createInvite",
+      "method": "POST",
+      "path": "/api/v1/game-sessions/{sessionId}/invites",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": "CreateInviteRequest",
+      "responseDto": "InviteDto"
+    },
+    {
+      "operation": "cancelInvite",
+      "method": "DELETE",
+      "path": "/api/v1/game-sessions/{sessionId}/invites/{inviteId}",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": null
+    },
+    {
+      "operation": "createManualDeposit",
+      "method": "POST",
+      "path": "/api/v1/game-sessions/{sessionId}/deposits",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "CreateManualDepositRequest",
+      "responseDto": "DepositDto"
+    },
+    {
+      "operation": "adjustPlayerBalance",
+      "method": "POST",
+      "path": "/api/v1/game-sessions/{sessionId}/players/{membershipId}/balance-adjustments",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "AdjustPlayerBalanceRequest",
+      "responseDto": "SessionRosterPlayerDto"
+    },
+    {
+      "operation": "previewDealerCashOut",
+      "method": "GET",
+      "path": "/api/v1/game-sessions/{sessionId}/players/{membershipId}/cashout-preview",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "CashOutPreviewResponse"
+    },
+    {
+      "operation": "startDealerCashOut",
+      "method": "POST",
+      "path": "/api/v1/game-sessions/{sessionId}/players/{membershipId}/cashouts",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "DealerCashOutRequest",
+      "responseDto": "CashOutResponse|null"
+    },
+    {
+      "operation": "settleManually",
+      "method": "POST",
+      "path": "/api/v1/game-sessions/{sessionId}/players/{membershipId}/manual-settlement",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "ManualSettlementRequest",
+      "responseDto": "CashOutResponse|null"
+    },
+    {
+      "operation": "removeGameSession",
+      "method": "DELETE",
+      "path": "/api/v1/game-sessions/{sessionId}",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "SessionRemovalDto"
+    },
+    {
+      "operation": "reportPayoutEvent",
+      "method": "POST",
+      "path": "/api/v1/payout-events",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "PayoutEventDto",
+      "responseDto": "PayoutEventAckDto"
+    },
+    {
+      "operation": "acknowledgePayoutEvent",
+      "method": "POST",
+      "path": "/api/v1/payout-events/{operationId}/{sequenceNumber}/ack",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "PayoutEventAckDto",
+      "responseDto": null
+    },
+    {
+      "operation": "listOpenPayoutOperations",
+      "method": "GET",
+      "path": "/api/v1/payout-operations/open",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "PayoutOperationDto[]"
+    },
+    {
+      "operation": "retryCashout",
+      "method": "POST",
+      "path": "/api/v1/cashouts/{operationId}/retry",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "RetryCashoutRequest",
+      "responseDto": "PayoutOperationDto"
+    },
+    {
+      "operation": "reconcilePayoutOperation",
+      "method": "POST",
+      "path": "/api/v1/payout-operations/{operationId}/reconcile",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "ReconcileOperationRequest",
+      "responseDto": "CashOutResponse"
+    },
+    {
+      "operation": "settleCashOut",
+      "method": "POST",
+      "path": "/api/v1/cashouts/{cashOutId}/settle",
+      "financialMutation": true,
+      "idempotencyKeyRequired": true,
+      "requestDto": "CashOutSettlementRequest",
+      "responseDto": "CashOutResponse"
+    },
+    {
+      "operation": "listOpenCashOuts",
+      "method": "GET",
+      "path": "/api/v1/cashouts/open",
+      "financialMutation": false,
+      "idempotencyKeyRequired": false,
+      "requestDto": null,
+      "responseDto": "OpenCashOutDto[]"
+    }
   ],
   "enumDefinitions": {
-    "GameSessionState": ["created", "open", "closing", "closed"],
-    "SessionPlayerState": ["invited", "open", "closed"]
+    "GameSessionState": [
+      "created",
+      "open",
+      "closing",
+      "closed"
+    ],
+    "SessionPlayerState": [
+      "invited",
+      "open",
+      "closed"
+    ]
   },
   "dtoDefinitions": {
-    "PayoutExecutorStatusDto": { "executorInstanceId": "guid", "isReady": "bool", "hasActiveOperation": "bool", "activeOperationId": "guid|null", "status": "string", "observedAt": "utcDateTimeOffset" },
-    "GameSessionDto": { "sessionId": "guid", "gameType": "string", "feePercent": "decimal", "state": "GameSessionState", "playerCount": "int32", "totalDepositedGil": "int64", "payoutState": "string", "reconciliationState": "string", "createdAt": "utcDateTimeOffset", "openedAt": "utcDateTimeOffset|null", "closedAt": "utcDateTimeOffset|null", "maxPlayers": "int32|null", "dealerSessionNumber": "int32" },
-    "SessionPlayerDto": { "playerId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "state": "SessionPlayerState", "depositedGil": "int64", "payoutGil": "int64|null", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
-    "SessionRosterPlayerDto": { "membershipId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "tokens": "int64", "deposit": "int64", "bettingLocked": "bool", "payoutState": "string", "reconciliationState": "string", "joinedAt": "utcDateTimeOffset" },
-    "PendingInviteDto": { "inviteId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "initialBalanceGil": "int64", "createdAt": "utcDateTimeOffset", "expiresAt": "utcDateTimeOffset" },
-    "SessionRosterDto": { "sessionId": "guid", "players": "SessionRosterPlayerDto[]", "pendingInvites": "PendingInviteDto[]", "observedAt": "utcDateTimeOffset" },
-    "AdjustPlayerBalanceRequest": { "amountGil": "int64" },
-    "DealerCashOutRequest": { "confirmAllAvailable": "bool", "confirmNetZero": "bool", "expectedGross": "int64", "expectedFee": "int64", "expectedNet": "int64" },
-    "SessionRemovalDto": { "sessionId": "guid", "mode": "string" },
-    "CashOutPreviewResponse": { "gross": "int64", "feePercent": "decimal", "fee": "int64", "net": "int64", "netIsZero": "bool", "legs": "CashOutLegPreview[]" },
-    "CashOutResponse": { "id": "guid", "sessionId": "guid", "gross": "int64", "feePercent": "decimal", "fee": "int64", "net": "int64", "status": "string", "paidGross": "int64", "paidNet": "int64", "legs": "PayoutLegResponse[]", "createdAt": "utcDateTimeOffset" },
-    "DepositDto": { "depositId": "guid", "sessionId": "guid", "playerId": "guid", "amountGil": "int64", "idempotencyKey": "guid", "recordedAt": "utcDateTimeOffset" },
-    "PayoutOperationDto": { "operationId": "guid", "legId": "guid", "sessionId": "guid", "characterName": "string", "homeWorld": "string", "amountGil": "int64", "state": "PayoutOperationState", "lastErrorCode": "string|null", "lastErrorMessage": "string|null", "updatedAt": "utcDateTimeOffset" },
-    "PayoutEventDto": { "operationId": "guid", "legId": "guid", "sequenceNumber": "int64", "pluginInstanceId": "guid", "eventType": "PayoutEventType", "characterName": "string", "homeWorld": "string", "amountGil": "int64", "occurredAt": "utcDateTimeOffset", "errorCode": "string|null", "errorMessage": "string|null", "isAmbiguous": "bool" }
+    "PayoutExecutorStatusDto": {
+      "executorInstanceId": "guid",
+      "isReady": "bool",
+      "hasActiveOperation": "bool",
+      "activeOperationId": "guid|null",
+      "status": "string",
+      "observedAt": "utcDateTimeOffset"
+    },
+    "GameSessionDto": {
+      "sessionId": "guid",
+      "gameType": "string",
+      "feePercent": "decimal",
+      "state": "GameSessionState",
+      "playerCount": "int32",
+      "totalDepositedGil": "int64",
+      "payoutState": "string",
+      "reconciliationState": "string",
+      "createdAt": "utcDateTimeOffset",
+      "openedAt": "utcDateTimeOffset|null",
+      "closedAt": "utcDateTimeOffset|null",
+      "maxPlayers": "int32|null",
+      "dealerSessionNumber": "int32"
+    },
+    "SessionPlayerDto": {
+      "playerId": "guid",
+      "sessionId": "guid",
+      "characterName": "string",
+      "homeWorld": "string",
+      "state": "SessionPlayerState",
+      "depositedGil": "int64",
+      "payoutGil": "int64|null",
+      "payoutState": "string",
+      "reconciliationState": "string",
+      "joinedAt": "utcDateTimeOffset"
+    },
+    "SessionRosterPlayerDto": {
+      "membershipId": "guid",
+      "sessionId": "guid",
+      "characterName": "string",
+      "homeWorld": "string",
+      "tokens": "int64",
+      "deposit": "int64",
+      "bettingLocked": "bool",
+      "payoutState": "string",
+      "reconciliationState": "string",
+      "joinedAt": "utcDateTimeOffset"
+    },
+    "PendingInviteDto": {
+      "inviteId": "guid",
+      "sessionId": "guid",
+      "characterName": "string",
+      "homeWorld": "string",
+      "initialBalanceGil": "int64",
+      "createdAt": "utcDateTimeOffset",
+      "expiresAt": "utcDateTimeOffset"
+    },
+    "SessionRosterDto": {
+      "sessionId": "guid",
+      "players": "SessionRosterPlayerDto[]",
+      "pendingInvites": "PendingInviteDto[]",
+      "observedAt": "utcDateTimeOffset"
+    },
+    "AdjustPlayerBalanceRequest": {
+      "amountGil": "int64"
+    },
+    "DealerCashOutRequest": {
+      "confirmAllAvailable": "bool",
+      "confirmNetZero": "bool",
+      "expectedGross": "int64",
+      "expectedFee": "int64",
+      "expectedNet": "int64"
+    },
+    "SessionRemovalDto": {
+      "sessionId": "guid",
+      "mode": "string"
+    },
+    "CashOutPreviewResponse": {
+      "gross": "int64",
+      "feePercent": "decimal",
+      "fee": "int64",
+      "net": "int64",
+      "netIsZero": "bool",
+      "legs": "CashOutLegPreview[]"
+    },
+    "CashOutResponse": {
+      "id": "guid",
+      "sessionId": "guid",
+      "gross": "int64",
+      "feePercent": "decimal",
+      "fee": "int64",
+      "net": "int64",
+      "status": "string",
+      "paidGross": "int64",
+      "paidNet": "int64",
+      "legs": "PayoutLegResponse[]",
+      "createdAt": "utcDateTimeOffset"
+    },
+    "DepositDto": {
+      "depositId": "guid",
+      "sessionId": "guid",
+      "playerId": "guid",
+      "amountGil": "int64",
+      "idempotencyKey": "guid",
+      "recordedAt": "utcDateTimeOffset"
+    },
+    "PayoutOperationDto": {
+      "operationId": "guid",
+      "legId": "guid",
+      "sessionId": "guid",
+      "characterName": "string",
+      "homeWorld": "string",
+      "amountGil": "int64",
+      "state": "PayoutOperationState",
+      "lastErrorCode": "string|null",
+      "lastErrorMessage": "string|null",
+      "updatedAt": "utcDateTimeOffset"
+    },
+    "PayoutEventDto": {
+      "operationId": "guid",
+      "legId": "guid",
+      "sequenceNumber": "int64",
+      "pluginInstanceId": "guid",
+      "eventType": "PayoutEventType",
+      "characterName": "string",
+      "homeWorld": "string",
+      "amountGil": "int64",
+      "occurredAt": "utcDateTimeOffset",
+      "errorCode": "string|null",
+      "errorMessage": "string|null",
+      "isAmbiguous": "bool"
+    }
   },
   "dtoExamples": {
-    "CharacterIdentityDto": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true },
-    "PayoutExecutorStatusDto": { "executorInstanceId": "32000000-0000-0000-0000-000000000003", "isReady": true, "hasActiveOperation": false, "activeOperationId": null, "status": "ready", "observedAt": "2026-08-05T12:00:00+00:00" },
-    "AuthorizeDealerRequest": { "activationJwt": "redacted.jwt.value", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.2.0", "contractVersion": "1.2.0" },
-    "RefreshDealerRequest": { "refreshCredential": "redacted-refresh-credential", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "deviceId": "00000000-0000-0000-0000-000000000001", "pluginVersion": "1.2.0", "contractVersion": "1.2.0" },
-    "DealerAuthorizationDto": { "pairingId": "00000000-0000-0000-0000-000000000002", "dealerId": "00000000-0000-0000-0000-000000000003", "accessToken": "redacted-access-token", "refreshCredential": "redacted-refresh-credential", "accessTokenExpiresAt": "2026-08-05T13:00:00+00:00", "authorizedAt": "2026-08-05T12:00:00+00:00" },
-    "dealerDisconnect": { "pairingId": "00000000-0000-0000-0000-000000000002" },
-    "PluginPairingRequest": { "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.2.0", "contractVersion": "1.2.0" },
-    "PluginPairingDto": { "pairingId": "00000000-0000-0000-0000-000000000002", "pairedAt": "2026-08-05T12:00:00+00:00", "lastHeartbeatAt": "2026-08-05T12:00:00+00:00" },
-    "PluginHeartbeatRequest": { "pairingId": "00000000-0000-0000-0000-000000000002", "deviceId": "00000000-0000-0000-0000-000000000001", "character": { "characterName": "Exact Dealer", "homeWorld": "Ragnarok", "currentWorld": "Ragnarok", "isLoggedIn": true }, "pluginVersion": "1.2.0", "contractVersion": "1.2.0", "pendingOutboxEvents": 0, "sentAt": "2026-08-05T12:00:00+00:00" },
-    "ApiErrorDto": { "code": "validationError", "message": "Request validation failed.", "validationErrors": { "feePercent": ["Must be between 0 and 100."] }, "traceId": "00000000-0000-0000-0000-000000000004" },
-    "GameSessionDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "gameType": "plinko", "feePercent": 0.0, "state": "closing", "playerCount": 1, "totalDepositedGil": 1000, "payoutState": "pending", "reconciliationState": "clear", "createdAt": "2026-08-05T12:00:00+00:00", "openedAt": "2026-08-05T12:05:00+00:00", "closedAt": null, "maxPlayers": 4, "dealerSessionNumber": 1 },
-    "CreateGameSessionRequest": { "gameType": "plinko", "feePercent": 0.0, "maxPlayers": 4 },
-    "UpdateSessionFeeRequest": { "feePercent": 5.5 },
-    "SessionPlayerDto": { "playerId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "state": "open", "depositedGil": 1000, "payoutGil": null, "payoutState": "pending", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
-    "SessionRosterPlayerDto": { "membershipId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "balanceGil": 1000, "netGil": 250, "tokens": 1250, "deposit": 1000, "reservedTokens": 0, "bettingLocked": false, "payoutState": "none", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" },
-    "PendingInviteDto": { "inviteId": "21000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Other Player", "homeWorld": "Phoenix", "initialBalanceGil": 500, "createdAt": "2026-08-05T12:10:00+00:00", "expiresAt": "2026-08-05T12:12:00+00:00" },
-    "SessionRosterDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "players": [{ "membershipId": "20000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "tokens": 1250, "bettingLocked": false, "payoutState": "none", "reconciliationState": "clear", "joinedAt": "2026-08-05T12:06:00+00:00" }], "pendingInvites": [{ "inviteId": "21000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Other Player", "homeWorld": "Phoenix", "initialBalanceGil": 500, "createdAt": "2026-08-05T12:10:00+00:00", "expiresAt": "2026-08-05T12:12:00+00:00" }], "observedAt": "2026-08-05T12:10:00+00:00" },
-    "AdjustPlayerBalanceRequest": { "amountGil": -100 },
-    "DealerCashOutRequest": { "confirmAllAvailable": true, "confirmNetZero": false, "expectedGross": 1250, "expectedFee": 62, "expectedNet": 1188 },
-    "SessionRemovalDto": { "sessionId": "10000000-0000-0000-0000-000000000001", "mode": "archived" },
-    "CashOutPreviewResponse": { "gross": 1250, "feePercent": 5.0, "fee": 62, "net": 1188, "netIsZero": false, "legs": [{ "number": 1, "gross": 1250, "fee": 62, "net": 1188 }] },
-    "CashOutResponse": { "id": "30000000-0000-0000-0000-000000000003", "sessionId": "10000000-0000-0000-0000-000000000001", "gross": 1250, "feePercent": 5.0, "fee": 62, "net": 1188, "status": "queued", "paidGross": 0, "paidNet": 0, "legs": [{ "id": "31000000-0000-0000-0000-000000000003", "number": 1, "gross": 1250, "fee": 62, "net": 1188, "status": "queued", "attempt": 1, "operationId": "30000000-0000-0000-0000-000000000003" }], "createdAt": "2026-08-05T12:10:00+00:00" },
-    "CreateInviteRequest": { "characterName": "Exact Player", "homeWorld": "Ragnarok", "initialBalanceGil": 500 },
-    "InviteDto": { "inviteId": "21000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "initialBalanceGil": 500, "inviteUrl": "https://catsino.example/invites/example", "expiresAt": "2026-08-05T12:15:00+00:00" },
-    "CreateManualDepositRequest": { "playerId": "20000000-0000-0000-0000-000000000002", "amountGil": 1000 },
-    "DepositDto": { "depositId": "22000000-0000-0000-0000-000000000002", "sessionId": "10000000-0000-0000-0000-000000000001", "playerId": "20000000-0000-0000-0000-000000000002", "amountGil": 1000, "idempotencyKey": "23000000-0000-0000-0000-000000000002", "recordedAt": "2026-08-05T12:07:00+00:00" },
-    "PayoutLegDto": { "operationId": "30000000-0000-0000-0000-000000000003", "legId": "31000000-0000-0000-0000-000000000003", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "amountGil": 1000, "issuedAt": "2026-08-05T12:08:00+00:00" },
-    "PayoutOperationDto": { "operationId": "30000000-0000-0000-0000-000000000003", "legId": "31000000-0000-0000-0000-000000000003", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "amountGil": 1000, "state": "failed", "lastErrorCode": "tradeFailed", "lastErrorMessage": "Start a new cash out for the remaining amount.", "updatedAt": "2026-08-05T12:10:00+00:00" },
-    "PayoutEventDto": { "operationId": "30000000-0000-0000-0000-000000000003", "legId": "31000000-0000-0000-0000-000000000003", "sequenceNumber": 7, "pluginInstanceId": "32000000-0000-0000-0000-000000000003", "eventType": "tradeFailed", "characterName": "Exact Player", "homeWorld": "Ragnarok", "amountGil": 1000, "occurredAt": "2026-08-05T12:10:00+00:00", "errorCode": "tradeFailed", "errorMessage": "Start a new cash out for the remaining amount.", "isAmbiguous": true },
-    "PayoutEventAckDto": { "operationId": "30000000-0000-0000-0000-000000000003", "sequenceNumber": 7, "acknowledgedAt": "2026-08-05T12:10:01+00:00" },
-    "RetryCashoutRequest": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "dealerTriggered" },
-    "ReconcileOperationRequest": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "recoveryUnconfirmed" },
-    "CashOutSettlementRequest": { "cashOutId": "40000000-0000-0000-0000-000000000004", "legs": [ { "number": 1, "outcome": "completed", "errorCode": null }, { "number": 2, "outcome": "completed", "errorCode": null } ] },
-    "OpenCashOutDto": { "cashOutId": "40000000-0000-0000-0000-000000000004", "sessionId": "10000000-0000-0000-0000-000000000001", "characterName": "Exact Player", "homeWorld": "Ragnarok", "legs": [ { "number": 1, "gross": 1000000, "fee": 0, "net": 1000000, "status": "waitingForPlayer" } ] },
-    "CancelPayoutOperationDto": { "operationId": "30000000-0000-0000-0000-000000000003", "reason": "backendCancelled" }
+    "CharacterIdentityDto": {
+      "characterName": "Exact Dealer",
+      "homeWorld": "Ragnarok",
+      "currentWorld": "Ragnarok",
+      "isLoggedIn": true
+    },
+    "PayoutExecutorStatusDto": {
+      "executorInstanceId": "32000000-0000-0000-0000-000000000003",
+      "isReady": true,
+      "hasActiveOperation": false,
+      "activeOperationId": null,
+      "status": "ready",
+      "observedAt": "2026-08-05T12:00:00+00:00"
+    },
+    "AuthorizeDealerRequest": {
+      "activationJwt": "redacted.jwt.value",
+      "character": {
+        "characterName": "Exact Dealer",
+        "homeWorld": "Ragnarok",
+        "currentWorld": "Ragnarok",
+        "isLoggedIn": true
+      },
+      "deviceId": "00000000-0000-0000-0000-000000000001",
+      "pluginVersion": "1.2.0",
+      "contractVersion": "1.2.0"
+    },
+    "RefreshDealerRequest": {
+      "refreshCredential": "redacted-refresh-credential",
+      "character": {
+        "characterName": "Exact Dealer",
+        "homeWorld": "Ragnarok",
+        "currentWorld": "Ragnarok",
+        "isLoggedIn": true
+      },
+      "deviceId": "00000000-0000-0000-0000-000000000001",
+      "pluginVersion": "1.2.0",
+      "contractVersion": "1.2.0"
+    },
+    "DealerAuthorizationDto": {
+      "pairingId": "00000000-0000-0000-0000-000000000002",
+      "dealerId": "00000000-0000-0000-0000-000000000003",
+      "accessToken": "redacted-access-token",
+      "refreshCredential": "redacted-refresh-credential",
+      "accessTokenExpiresAt": "2026-08-05T13:00:00+00:00",
+      "authorizedAt": "2026-08-05T12:00:00+00:00"
+    },
+    "dealerDisconnect": {
+      "pairingId": "00000000-0000-0000-0000-000000000002"
+    },
+    "PluginPairingRequest": {
+      "deviceId": "00000000-0000-0000-0000-000000000001",
+      "character": {
+        "characterName": "Exact Dealer",
+        "homeWorld": "Ragnarok",
+        "currentWorld": "Ragnarok",
+        "isLoggedIn": true
+      },
+      "pluginVersion": "1.2.0",
+      "contractVersion": "1.2.0"
+    },
+    "PluginPairingDto": {
+      "pairingId": "00000000-0000-0000-0000-000000000002",
+      "pairedAt": "2026-08-05T12:00:00+00:00",
+      "lastHeartbeatAt": "2026-08-05T12:00:00+00:00"
+    },
+    "PluginHeartbeatRequest": {
+      "pairingId": "00000000-0000-0000-0000-000000000002",
+      "deviceId": "00000000-0000-0000-0000-000000000001",
+      "character": {
+        "characterName": "Exact Dealer",
+        "homeWorld": "Ragnarok",
+        "currentWorld": "Ragnarok",
+        "isLoggedIn": true
+      },
+      "pluginVersion": "1.2.0",
+      "contractVersion": "1.2.0",
+      "pendingOutboxEvents": 0,
+      "sentAt": "2026-08-05T12:00:00+00:00"
+    },
+    "ApiErrorDto": {
+      "code": "validationError",
+      "message": "Request validation failed.",
+      "validationErrors": {
+        "feePercent": [
+          "Must be between 0 and 100."
+        ]
+      },
+      "traceId": "00000000-0000-0000-0000-000000000004"
+    },
+    "GameSessionDto": {
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "gameType": "plinko",
+      "feePercent": 0.0,
+      "state": "closing",
+      "playerCount": 1,
+      "totalDepositedGil": 1000,
+      "payoutState": "pending",
+      "reconciliationState": "clear",
+      "createdAt": "2026-08-05T12:00:00+00:00",
+      "openedAt": "2026-08-05T12:05:00+00:00",
+      "closedAt": null,
+      "maxPlayers": 4,
+      "dealerSessionNumber": 1
+    },
+    "CreateGameSessionRequest": {
+      "gameType": "plinko",
+      "feePercent": 0.0,
+      "maxPlayers": 4
+    },
+    "UpdateSessionFeeRequest": {
+      "feePercent": 5.5
+    },
+    "SessionPlayerDto": {
+      "playerId": "20000000-0000-0000-0000-000000000002",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "state": "open",
+      "depositedGil": 1000,
+      "payoutGil": null,
+      "payoutState": "pending",
+      "reconciliationState": "clear",
+      "joinedAt": "2026-08-05T12:06:00+00:00"
+    },
+    "SessionRosterPlayerDto": {
+      "membershipId": "20000000-0000-0000-0000-000000000002",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "balanceGil": 1000,
+      "netGil": 250,
+      "tokens": 1250,
+      "deposit": 1000,
+      "reservedTokens": 0,
+      "bettingLocked": false,
+      "payoutState": "none",
+      "reconciliationState": "clear",
+      "joinedAt": "2026-08-05T12:06:00+00:00"
+    },
+    "PendingInviteDto": {
+      "inviteId": "21000000-0000-0000-0000-000000000002",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "characterName": "Other Player",
+      "homeWorld": "Phoenix",
+      "initialBalanceGil": 500,
+      "createdAt": "2026-08-05T12:10:00+00:00",
+      "expiresAt": "2026-08-05T12:12:00+00:00"
+    },
+    "SessionRosterDto": {
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "players": [
+        {
+          "membershipId": "20000000-0000-0000-0000-000000000002",
+          "sessionId": "10000000-0000-0000-0000-000000000001",
+          "characterName": "Exact Player",
+          "homeWorld": "Ragnarok",
+          "tokens": 1250,
+          "bettingLocked": false,
+          "payoutState": "none",
+          "reconciliationState": "clear",
+          "joinedAt": "2026-08-05T12:06:00+00:00"
+        }
+      ],
+      "pendingInvites": [
+        {
+          "inviteId": "21000000-0000-0000-0000-000000000002",
+          "sessionId": "10000000-0000-0000-0000-000000000001",
+          "characterName": "Other Player",
+          "homeWorld": "Phoenix",
+          "initialBalanceGil": 500,
+          "createdAt": "2026-08-05T12:10:00+00:00",
+          "expiresAt": "2026-08-05T12:12:00+00:00"
+        }
+      ],
+      "observedAt": "2026-08-05T12:10:00+00:00"
+    },
+    "AdjustPlayerBalanceRequest": {
+      "amountGil": -100
+    },
+    "DealerCashOutRequest": {
+      "confirmAllAvailable": true,
+      "confirmNetZero": false,
+      "expectedGross": 1250,
+      "expectedFee": 62,
+      "expectedNet": 1188
+    },
+    "ManualSettlementRequest": {
+      "confirmAllAvailable": true,
+      "expectedGross": 36000000,
+      "expectedFee": 1800000,
+      "expectedNet": 34200000
+    },
+    "SessionRemovalDto": {
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "mode": "archived"
+    },
+    "CashOutPreviewResponse": {
+      "gross": 1250,
+      "feePercent": 5.0,
+      "fee": 62,
+      "net": 1188,
+      "netIsZero": false,
+      "legs": [
+        {
+          "number": 1,
+          "gross": 1250,
+          "fee": 62,
+          "net": 1188
+        }
+      ]
+    },
+    "CashOutResponse": {
+      "id": "30000000-0000-0000-0000-000000000003",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "gross": 1250,
+      "feePercent": 5.0,
+      "fee": 62,
+      "net": 1188,
+      "status": "queued",
+      "paidGross": 0,
+      "paidNet": 0,
+      "legs": [
+        {
+          "id": "31000000-0000-0000-0000-000000000003",
+          "number": 1,
+          "gross": 1250,
+          "fee": 62,
+          "net": 1188,
+          "status": "queued",
+          "attempt": 1,
+          "operationId": "30000000-0000-0000-0000-000000000003"
+        }
+      ],
+      "createdAt": "2026-08-05T12:10:00+00:00"
+    },
+    "CreateInviteRequest": {
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "initialBalanceGil": 500
+    },
+    "InviteDto": {
+      "inviteId": "21000000-0000-0000-0000-000000000002",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "initialBalanceGil": 500,
+      "inviteUrl": "https://catsino.example/invites/example",
+      "expiresAt": "2026-08-05T12:15:00+00:00"
+    },
+    "CreateManualDepositRequest": {
+      "playerId": "20000000-0000-0000-0000-000000000002",
+      "amountGil": 1000
+    },
+    "DepositDto": {
+      "depositId": "22000000-0000-0000-0000-000000000002",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "playerId": "20000000-0000-0000-0000-000000000002",
+      "amountGil": 1000,
+      "idempotencyKey": "23000000-0000-0000-0000-000000000002",
+      "recordedAt": "2026-08-05T12:07:00+00:00"
+    },
+    "PayoutLegDto": {
+      "operationId": "30000000-0000-0000-0000-000000000003",
+      "legId": "31000000-0000-0000-0000-000000000003",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "amountGil": 1000,
+      "issuedAt": "2026-08-05T12:08:00+00:00"
+    },
+    "PayoutOperationDto": {
+      "operationId": "30000000-0000-0000-0000-000000000003",
+      "legId": "31000000-0000-0000-0000-000000000003",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "amountGil": 1000,
+      "state": "failed",
+      "lastErrorCode": "tradeFailed",
+      "lastErrorMessage": "Start a new cash out for the remaining amount.",
+      "updatedAt": "2026-08-05T12:10:00+00:00"
+    },
+    "PayoutEventDto": {
+      "operationId": "30000000-0000-0000-0000-000000000003",
+      "legId": "31000000-0000-0000-0000-000000000003",
+      "sequenceNumber": 7,
+      "pluginInstanceId": "32000000-0000-0000-0000-000000000003",
+      "eventType": "tradeFailed",
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "amountGil": 1000,
+      "occurredAt": "2026-08-05T12:10:00+00:00",
+      "errorCode": "tradeFailed",
+      "errorMessage": "Start a new cash out for the remaining amount.",
+      "isAmbiguous": true
+    },
+    "PayoutEventAckDto": {
+      "operationId": "30000000-0000-0000-0000-000000000003",
+      "sequenceNumber": 7,
+      "acknowledgedAt": "2026-08-05T12:10:01+00:00"
+    },
+    "RetryCashoutRequest": {
+      "operationId": "30000000-0000-0000-0000-000000000003",
+      "reason": "dealerTriggered"
+    },
+    "ReconcileOperationRequest": {
+      "operationId": "30000000-0000-0000-0000-000000000003",
+      "reason": "recoveryUnconfirmed"
+    },
+    "CashOutSettlementRequest": {
+      "cashOutId": "40000000-0000-0000-0000-000000000004",
+      "legs": [
+        {
+          "number": 1,
+          "outcome": "completed",
+          "errorCode": null
+        },
+        {
+          "number": 2,
+          "outcome": "completed",
+          "errorCode": null
+        }
+      ]
+    },
+    "OpenCashOutDto": {
+      "cashOutId": "40000000-0000-0000-0000-000000000004",
+      "sessionId": "10000000-0000-0000-0000-000000000001",
+      "characterName": "Exact Player",
+      "homeWorld": "Ragnarok",
+      "legs": [
+        {
+          "number": 1,
+          "gross": 1000000,
+          "fee": 0,
+          "net": 1000000,
+          "status": "waitingForPlayer"
+        }
+      ]
+    },
+    "CancelPayoutOperationDto": {
+      "operationId": "30000000-0000-0000-0000-000000000003",
+      "reason": "backendCancelled"
+    }
   },
   "hub": {
     "path": "/hubs/plugin",
     "serverToPlugin": [
-      { "name": "RefreshDealerSessions", "payload": null },
-      { "name": "QueuePayoutLeg", "payloadDto": "PayoutLegDto" },
-      { "name": "CancelPayoutOperation", "payloadDto": "CancelPayoutOperationDto" },
-      { "name": "SessionClosed", "payload": "10000000-0000-0000-0000-000000000001" },
-      { "name": "DealerAuthorizationRevoked", "payload": "authorizationRevoked" },
-      { "name": "ReconnectRequired", "payload": "tokenRotated" },
-      { "name": "BlackjackStateChanged", "payloadDto": "BlackjackTableDto" },
-      { "name": "HoldemStateChanged", "payloadDto": "HoldemTableDto" }
+      {
+        "name": "RefreshDealerSessions",
+        "payload": null
+      },
+      {
+        "name": "QueuePayoutLeg",
+        "payloadDto": "PayoutLegDto"
+      },
+      {
+        "name": "CancelPayoutOperation",
+        "payloadDto": "CancelPayoutOperationDto"
+      },
+      {
+        "name": "SessionClosed",
+        "payload": "10000000-0000-0000-0000-000000000001"
+      },
+      {
+        "name": "DealerAuthorizationRevoked",
+        "payload": "authorizationRevoked"
+      },
+      {
+        "name": "ReconnectRequired",
+        "payload": "tokenRotated"
+      },
+      {
+        "name": "BlackjackStateChanged",
+        "payloadDto": "BlackjackTableDto"
+      },
+      {
+        "name": "HoldemStateChanged",
+        "payloadDto": "HoldemTableDto"
+      },
+      {
+        "name": "RouletteStateChanged",
+        "payloadDto": "RouletteTableDto"
+      }
     ],
     "pluginToServer": [
-      { "name": "ReportDepositStatus", "arguments": ["10000000-0000-0000-0000-000000000001", "20000000-0000-0000-0000-000000000002", "23000000-0000-0000-0000-000000000002", "succeeded", null] },
-      { "name": "ReportPayoutExecutorStatus", "payloadDto": "PayoutExecutorStatusDto" },
-      { "name": "ReportOutgoingTradeStatus", "payloadDto": "PayoutOperationDto" },
-      { "name": "ReportOutboxStatus", "arguments": [0, "2026-08-05T12:10:00+00:00"] }
+      {
+        "name": "ReportDepositStatus",
+        "arguments": [
+          "10000000-0000-0000-0000-000000000001",
+          "20000000-0000-0000-0000-000000000002",
+          "23000000-0000-0000-0000-000000000002",
+          "succeeded",
+          null
+        ]
+      },
+      {
+        "name": "ReportPayoutExecutorStatus",
+        "payloadDto": "PayoutExecutorStatusDto"
+      },
+      {
+        "name": "ReportOutgoingTradeStatus",
+        "payloadDto": "PayoutOperationDto"
+      },
+      {
+        "name": "ReportOutboxStatus",
+        "arguments": [
+          0,
+          "2026-08-05T12:10:00+00:00"
+        ]
+      }
     ]
   },
   "idempotency": {

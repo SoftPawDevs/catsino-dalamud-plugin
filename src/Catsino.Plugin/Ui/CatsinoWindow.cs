@@ -25,8 +25,8 @@ public sealed class CatsinoWindow : Window
     private readonly SessionPanelRenderer sessionPanel;
     // Display labels and the wire values they map to — the two differ for Hold'em, whose game type is the
     // single word "holdem".
-    private static readonly string[] GameTypes = ["Plinko", "Blackjack", "Texas Hold'em"];
-    private static readonly string[] GameTypeValues = ["plinko", "blackjack", "holdem"];
+    private static readonly string[] GameTypes = ["Plinko", "Blackjack", "Texas Hold'em", "Roulette"];
+    private static readonly string[] GameTypeValues = ["plinko", "blackjack", "holdem", "roulette"];
 
     public CatsinoWindow(CatsinoRuntime runtime, SessionPanelRenderer sessionPanel)
         : base("Catsino###CatsinoMainWindow")
@@ -213,6 +213,11 @@ public sealed class CatsinoWindow : Window
         if (isHoldem)
         {
             ImGui.TextDisabled($"Texas Hold'em tables seat up to {HoldemBetDefaults.MaxSeats} players (the dealer does not take a seat). Blinds come from the min bet: big blind = min bet, small blind = half of it.");
+        }
+
+        if (selectedGameType == "roulette")
+        {
+            ImGui.TextDisabled("European wheel: a single zero, 37 pockets, straight up pays 35:1. Min and max bet apply per field, and the chip values players get are derived from the min bet.");
         }
 
         EndDisabled(!runtime.IsAuthorized || busy);

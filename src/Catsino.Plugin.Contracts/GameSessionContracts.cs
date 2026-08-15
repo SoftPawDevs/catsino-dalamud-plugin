@@ -203,6 +203,55 @@ public sealed record HoldemTableDto(
 
 public sealed record HoldemDealRequest(Guid SessionId);
 
+// === Roulette (dealer side) ===
+// European wheel, 37 pockets. Nothing is secret at this table, so the dealer sees the same view the
+// players do: every stake, who placed it, and the winning number once the dealer spins.
+public sealed record RouletteBetDto(
+    Guid MembershipId,
+    string Name,
+    // straight|split|street|corner|sixLine|column|dozen|red|black|odd|even|low|high
+    string Type,
+    IReadOnlyList<int> Selection,
+    long Amount,
+    long? Payout,
+    long? Net);
+
+// Status is idle|betting|spinning|settled. While spinning, DeadlineAt is when the ball lands — the plugin
+// animates the wheel against it and the payouts book at that moment, not before.
+public sealed record RouletteTableDto(
+    Guid SessionId,
+    Guid? RoundId,
+    string Status,
+    IReadOnlyList<RouletteBetDto> Bets,
+    long TotalStaked,
+    int? WinningNumber,
+    string? WinningColor,
+    IReadOnlyList<int> RecentNumbers,
+    long MinBet,
+    long MaxBet,
+    IReadOnlyList<long> ChipDenominations,
+    Guid? ViewerMembershipId,
+    DateTimeOffset? DeadlineAt,
+    DateTimeOffset ObservedAt);
+
+public sealed record RouletteSpinRequest(Guid SessionId);
+
+public static class RouletteBetDefaults
+{
+    public const int SpinSeconds = 8;
+    public const int ResultsVisibleSeconds = 10;
+    public const int PocketCount = 37;
+}
+
+// Dealer records a payout made OUTSIDE the game (a marketboard sale when the amount is too large to hand
+// over in 1M trades) and clears the player from the table. No trade runs and no payout leg is created, so
+// the confirmation echoes the exact quote the dealer was shown.
+public sealed record ManualSettlementRequest(
+    bool ConfirmAllAvailable,
+    long ExpectedGross,
+    long ExpectedFee,
+    long ExpectedNet);
+
 public static class HoldemBetDefaults
 {
     public const int TurnSeconds = 45;

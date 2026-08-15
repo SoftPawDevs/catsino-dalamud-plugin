@@ -11,12 +11,12 @@ public sealed class ProtocolFixtureTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "backend-v1.fixture.json")));
         var root = document.RootElement;
-        Assert.Equal("1.8.0", root.GetProperty("contractVersion").GetString());
+        Assert.Equal("1.9.0", root.GetProperty("contractVersion").GetString());
         var routes = root.GetProperty("routes").EnumerateArray().ToArray();
-        Assert.Equal(30, routes.Length);
+        Assert.Equal(31, routes.Length);
 
         var financialRoutes = routes.Where(route => route.GetProperty("financialMutation").GetBoolean()).ToArray();
-        Assert.Equal(12, financialRoutes.Length);
+        Assert.Equal(13, financialRoutes.Length);
         Assert.All(financialRoutes, route => Assert.True(route.GetProperty("idempotencyKeyRequired").GetBoolean()));
         var inviteRoute = Assert.Single(routes, route => route.GetProperty("operation").GetString() == "createInvite");
         Assert.False(inviteRoute.GetProperty("financialMutation").GetBoolean());

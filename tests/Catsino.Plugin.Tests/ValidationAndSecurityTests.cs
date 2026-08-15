@@ -25,8 +25,9 @@ public sealed class ValidationAndSecurityTests
         Assert.Equal("Blackjack", GameTypeLabels.Label("blackjack"));
         Assert.Equal("Hold'em", GameTypeLabels.Label("holdem"));
         Assert.Equal("Hold'em", GameTypeLabels.Label("HOLDEM"));
+        Assert.Equal("Roulette", GameTypeLabels.Label("roulette"));
         // A game this plugin does not know about is still worth showing rather than hiding.
-        Assert.Equal("roulette", GameTypeLabels.Label("roulette"));
+        Assert.Equal("baccarat", GameTypeLabels.Label("baccarat"));
         Assert.Equal("Unknown", GameTypeLabels.Label(null));
     }
 

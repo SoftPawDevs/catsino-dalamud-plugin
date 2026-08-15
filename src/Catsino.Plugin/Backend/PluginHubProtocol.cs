@@ -11,6 +11,7 @@ public static class PluginHubProtocol
     public const string ReconnectRequired = "ReconnectRequired";
     public const string BlackjackStateChanged = "BlackjackStateChanged";
     public const string HoldemStateChanged = "HoldemStateChanged";
+    public const string RouletteStateChanged = "RouletteStateChanged";
     public const string ReportDepositStatus = "ReportDepositStatus";
     public const string ReportPayoutExecutorStatus = "ReportPayoutExecutorStatus";
     public const string ReportOutgoingTradeStatus = "ReportOutgoingTradeStatus";
@@ -26,6 +27,7 @@ public static class PluginHubProtocol
         ReconnectRequired,
         BlackjackStateChanged,
         HoldemStateChanged,
+        RouletteStateChanged,
     ];
 
     public static IReadOnlyList<string> PluginToServerReports { get; } =

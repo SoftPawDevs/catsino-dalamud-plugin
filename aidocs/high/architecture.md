@@ -14,7 +14,7 @@ This repo is the public dealer client for Catsino running inside FFXIV through D
 - The plugin is not trusted for balances, session ownership, payout truth, or game authority (neither Plinko outcomes nor any card, hand value, betting rule or pot split).
 - The backend remains authoritative.
 - The plugin presents state, sends requests, executes approved payout legs, and reports observed outcomes.
-- For Blackjack it renders the backend's per-dealer table projection (its own full hand included) and submits dealer Deal/Hit/Stay; for Hold'em it renders a projection with no hole cards at all and submits Deal only. The deck/shoe, hand valuation, betting legality and pot splitting never live in the plugin.
+- For Blackjack it renders the backend's per-dealer table projection (its own full hand included) and submits dealer Deal/Hit/Stay; for Hold'em it renders a projection with no hole cards at all and submits Deal only; for Roulette it renders the shared table (there is nothing secret there) and submits Spin only. The deck/shoe, hand valuation, betting legality, pot splitting and the winning pocket never live in the plugin.
 
 ## Main Runtime Surfaces
 
@@ -50,6 +50,42 @@ cash-out fee).
 - **Seat cap:** Hold'em tables seat at most 10 players (`HoldemBetDefaults.MaxSeats`). The create-session UI
   says so, `DealerInputValidator.ValidateMaxPlayers` rejects a larger number, and `ResolveMaxPlayers` sends a
   full table when the field is left empty — Hold'em has no "unlimited".
+
+## Roulette Dealer Surface
+
+Roulette is the mirror image of Hold'em: nothing at the table is secret, so the dealer sees exactly what
+the players see — every chip, whose it is, and the winning number. The dealer's only control is releasing
+the ball.
+
+- **UI:** `src/Catsino.Plugin/Ui/RoulettePanelRenderer.cs` renders the wheel on the session's **Table**
+  sub-tab, with the ball sitting in the pocket the round is heading for (racing round and easing into it
+  while the wheel is spinning, with the phase taken from the round's `DeadlineAt` so a reconnect picks the
+  animation up where it actually is). Below it: every player's chips grouped by player with the field named
+  in full ("Corner 1/2/4/5"), the last numbers, and the single **Spin** control.
+- **The disc does not rotate, the ball does.** A spinning number ring is unreadable at ImGui panel size, so
+  the artwork is drawn as-is and only the ball moves — `roulette_pill2.png` placed at the pocket's angle.
+- **The dealer decides nothing.** The backend draws the number the moment the wheel is released and books
+  the payouts only when the ball lands; **Spin** just starts that clock.
+- **State:** `src/Catsino.Plugin/Runtime/RouletteTableStore.cs`, fed by the `RouletteStateChanged` hub push
+  and the same ~2s poll.
+- **API:** `CatsinoApiClient.GetRouletteTableAsync` / `SpinRouletteAsync` (the latter carries an idempotency key).
+- **Art:** `src/Catsino.Plugin/Assets/Roulette/*.png`, embedded resources resolved by `Ui/RouletteTextures.cs`.
+
+## Manual Settlement (paid outside the game)
+
+Large wins are impractical to hand over in 1M-per-trade payouts, so the dealer buys something from the
+player on the marketboard instead. **Settle & remove**, next to every Cash out button in the roster, books
+that payout and clears the player from the table.
+
+- The button first fetches the ordinary cash-out quote and opens a confirmation window showing gross, the
+  dealer fee, and — highlighted — the **net to pay**. The order matters: the dealer reads the net, does the
+  trade with that exact number, and only then confirms.
+- Confirming echoes the quote back (`ManualSettlementRequest`), so the backend refuses if the balance moved
+  in the meantime. **No trade is executed by the plugin**, and no payout leg exists to execute; the
+  confirmation window says so in as many words.
+- Flow: `RequestManualSettlementPreviewAsync` -> `ManualSettlementSubmission` (the same
+  pending/sending/failed state machine as a cash-out, with a retained idempotency key for an ambiguous
+  retry) -> `SubmitManualSettlementAsync`.
 
 ## Security And Secrets
 

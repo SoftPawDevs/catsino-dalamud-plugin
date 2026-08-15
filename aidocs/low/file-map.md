@@ -3,8 +3,11 @@
 ## Entry And UI
 
 - `src/Catsino.Plugin/Plugin.cs`: plugin entry point, command registration, window system integration.
-- `src/Catsino.Plugin/Ui/CatsinoWindow.cs`: main dealer window (incl. the create-session form's game-type selector: Plinko / Blackjack / Texas Hold'em, and the Hold'em 10-seat hint + validation).
-- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`: session actions, roster rendering, dealer-side controls; a turn-based session gets a `Manage` / `Table` sub-tab bar, and the `Table` tab hosts that game's live table (blackjack or Hold'em).
+- `src/Catsino.Plugin/Ui/CatsinoWindow.cs`: main dealer window (incl. the create-session form's game-type selector: Plinko / Blackjack / Texas Hold'em / Roulette, the Hold'em 10-seat hint + validation, and the roulette wheel/limits hint).
+- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs`: session actions, roster rendering, dealer-side controls; a table-game session gets a `Manage` / `Table` sub-tab bar, and the `Table` tab hosts that game's live table (Blackjack, Hold'em or Roulette). The roster row also carries **Settle & remove** next to Cash out, whose confirmation window shows gross / dealer fee / net to pay for a payout made outside the game.
+- `src/Catsino.Plugin/Ui/RoulettePanelRenderer.cs`: the roulette dealer table — the wheel with the ball in its pocket (phase taken from the round's `DeadlineAt`), every player's chips grouped by player with the field named in full, the last numbers, and the **Spin** control.
+- `src/Catsino.Plugin/Ui/RouletteTextures.cs`: resolves the embedded wheel art (`Assets/Roulette/*.png`) to ImGui texture handles.
+- `src/Catsino.Plugin/Runtime/RouletteTableStore.cs`: latest `RouletteTableDto` per session, newest-wins by `ObservedAt`.
 - `src/Catsino.Plugin/Ui/BlackjackPanelRenderer.cs`: the live blackjack table — dealer hand, per-seat tokens/bet/hand/status, active-turn highlight + 45s countdown, and the **Deal / Hit / Stay** controls (Hit/Stay enabled only on table status `dealerTurn`).
 - `src/Catsino.Plugin/Ui/CardTextures.cs`: card face/back textures loaded from embedded `Assets/Cards/*.png` via `ITextureProvider.GetFromManifestResource` (returns an `ImTextureID`).
 - `src/Catsino.Plugin/Ui/SessionWindow.cs`: detachable per-session window.
@@ -45,7 +48,7 @@ Table refresh (`RefreshBlackjackTableAsync` / `RefreshHoldemTableAsync` / the sh
 ## Contracts And Docs
 
 - `src/Catsino.Plugin.Contracts/DealerContracts.cs`: authorization and dealer DTOs.
-- `src/Catsino.Plugin.Contracts/GameSessionContracts.cs`: session and roster DTOs, plus the Blackjack table/action DTOs (`BlackjackTableDto`, `BlackjackDealRequest`, `BlackjackDealerActionRequest`) and the Hold'em ones (`HoldemTableDto`, `HoldemSeatDto`, `HoldemPotDto`, `HoldemDealRequest`, `HoldemBetDefaults`).
+- `src/Catsino.Plugin.Contracts/GameSessionContracts.cs`: session and roster DTOs, plus the Blackjack table/action DTOs (`BlackjackTableDto`, `BlackjackDealRequest`, `BlackjackDealerActionRequest`) the Hold'em ones (`HoldemTableDto`, `HoldemSeatDto`, `HoldemPotDto`, `HoldemDealRequest`, `HoldemBetDefaults`), the Roulette ones (`RouletteTableDto`, `RouletteBetDto`, `RouletteSpinRequest`, `RouletteBetDefaults`), and `ManualSettlementRequest`.
 - `src/Catsino.Plugin.Contracts/PayoutContracts.cs`: payout DTOs.
 - `src/Catsino.Plugin.Contracts/ContractJson.cs`: `ContractVersion.Current = "1.5.0"` + shared JSON options.
 - `src/Catsino.Plugin/Assets/Cards/`: embedded card face + back PNGs used by `CardTextures`.

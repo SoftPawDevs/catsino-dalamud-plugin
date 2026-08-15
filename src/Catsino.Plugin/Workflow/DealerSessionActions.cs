@@ -104,6 +104,53 @@ public sealed class CashOutSubmission
     public void MarkSucceeded() => State = DealerActionState.Succeeded;
 }
 
+// A payout the dealer settled OUTSIDE the game — typically a marketboard sale, when the amount is far
+// past what 1M-per-trade payouts can carry. The plugin still shows the same gross / fee / net quote as a
+// normal cash out, because the dealer needs the exact net before doing the trade; confirming it books the
+// payout and clears the player from the table without any trade being executed.
+public sealed class ManualSettlementSubmission
+{
+    public ManualSettlementSubmission(SessionPlayerKey player, CashOutPreviewResponse preview, Guid? idempotencyKey = null)
+    {
+        Player = player;
+        Preview = preview;
+        IdempotencyKey = idempotencyKey ?? Guid.NewGuid();
+    }
+
+    public SessionPlayerKey Player { get; }
+
+    public CashOutPreviewResponse Preview { get; }
+
+    public Guid IdempotencyKey { get; }
+
+    public DealerActionState State { get; private set; } = DealerActionState.PendingConfirmation;
+
+    public string? ErrorMessage { get; private set; }
+
+    public bool CanDiscardFailure { get; private set; }
+
+    public void MarkSending()
+    {
+        if (State is not (DealerActionState.PendingConfirmation or DealerActionState.Failed))
+        {
+            throw new InvalidOperationException("Only a pending or failed settlement can be sent.");
+        }
+
+        State = DealerActionState.Sending;
+        ErrorMessage = null;
+        CanDiscardFailure = false;
+    }
+
+    public void MarkFailed(string message, bool canDiscard = false)
+    {
+        State = DealerActionState.Failed;
+        ErrorMessage = SecretRedactor.Redact(message);
+        CanDiscardFailure = canDiscard;
+    }
+
+    public void MarkSucceeded() => State = DealerActionState.Succeeded;
+}
+
 public sealed class SessionActionDraftStore
 {
     private readonly object sync = new();

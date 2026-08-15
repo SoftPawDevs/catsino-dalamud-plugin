@@ -9,7 +9,7 @@ using Dalamud.Bindings.ImGui;
 
 namespace Catsino.Plugin.Ui;
 
-public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> openDetached, BlackjackPanelRenderer blackjackPanel, HoldemPanelRenderer holdemPanel)
+public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> openDetached, BlackjackPanelRenderer blackjackPanel, HoldemPanelRenderer holdemPanel, RoulettePanelRenderer roulettePanel)
 {
     private readonly Dictionary<Guid, PanelState> states = [];
     private readonly ConcurrentDictionary<SessionPlayerKey, byte> busyPlayers = new();
@@ -55,6 +55,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         {
             "blackjack" => blackjackPanel.Draw,
             "holdem" => holdemPanel.Draw,
+            "roulette" => roulettePanel.Draw,
             _ => null
         };
         if (tablePanel is not null)
@@ -181,9 +182,11 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         var key = new SessionPlayerKey(player.SessionId, player.MembershipId);
         var adjustment = runtime.GetBalanceAdjustment(key);
         var cashOut = runtime.GetCashOut(key);
+        var settlement = runtime.GetManualSettlement(key);
         var rowBusy = busyPlayers.ContainsKey(key) ||
                       adjustment?.State == DealerActionState.Sending ||
-                      cashOut?.State == DealerActionState.Sending;
+                      cashOut?.State == DealerActionState.Sending ||
+                      settlement?.State == DealerActionState.Sending;
         var payoutLocked = HasOpenPayout(player.PayoutState);
         var cashOutRequested = player.CashOutRequestedAt is not null && !payoutLocked;
 
@@ -247,6 +250,15 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         }
 
         EndDisabled(rowBusy || payoutLocked || cashOut is not null);
+        ImGui.SameLine();
+        BeginDisabled(rowBusy || payoutLocked || cashOut is not null || settlement is not null);
+        if (ImGui.Button("Settle & remove"))
+        {
+            RunPlayer(state, key, () => runtime.RequestManualSettlementPreviewAsync(key));
+        }
+
+        EndDisabled(rowBusy || payoutLocked || cashOut is not null || settlement is not null);
+        ShowTooltip("For a payout made outside the game (a marketboard sale, typically). Shows the exact net to hand over, then books it and clears the player from the table. No trade is executed.");
         if (cashOutRequested)
         {
             ImGui.SameLine();
@@ -411,6 +423,11 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
             {
                 DrawCashOutConfirmation(player, key, cashOut, state);
             }
+
+            if (runtime.GetManualSettlement(key) is { } settlement)
+            {
+                DrawManualSettlementConfirmation(player, key, settlement, state);
+            }
         }
     }
 
@@ -464,6 +481,53 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
         }
 
         EndDisabled(busy || cashOut.State == DealerActionState.Failed && !cashOut.CanDiscardFailure);
+        ImGui.PopID();
+    }
+
+    // The dealer reads the net here, does the marketboard trade with that exact number, and only then
+    // confirms — which is why the quote is shown BEFORE anything is booked, and why confirming says
+    // plainly that the plugin will not trade anything itself.
+    private void DrawManualSettlementConfirmation(
+        SessionRosterPlayerDto player,
+        SessionPlayerKey key,
+        ManualSettlementSubmission settlement,
+        PanelState state)
+    {
+        ImGui.PushID($"manual-{player.MembershipId:D}");
+        ImGui.Separator();
+        ImGui.TextUnformatted($"Settle outside the game for {player.CharacterName}@{player.HomeWorld}");
+        ImGui.TextUnformatted($"Gross: {settlement.Preview.Gross:N0} gil");
+        ImGui.TextUnformatted($"Fee percent: {settlement.Preview.FeePercent.ToString(CultureInfo.InvariantCulture)}%");
+        ImGui.TextUnformatted($"Dealer fee: {settlement.Preview.Fee:N0} gil");
+        ImGui.TextColored(new Vector4(0.95f, 0.79f, 0.41f, 1f), $"Net to pay: {settlement.Preview.Net:N0} gil");
+        ImGui.TextWrapped("No trade is executed. Hand over the net amount yourself first — confirming books it as paid and removes the player from the table.");
+
+        if (!string.IsNullOrWhiteSpace(settlement.ErrorMessage))
+        {
+            ImGui.TextWrapped(settlement.ErrorMessage);
+        }
+
+        if (settlement.State == DealerActionState.Failed && !settlement.CanDiscardFailure)
+        {
+            ImGui.TextDisabled("The outcome is ambiguous. Retry with the retained idempotency key before dismissing.");
+        }
+
+        var busy = settlement.State == DealerActionState.Sending || busyPlayers.ContainsKey(key);
+        BeginDisabled(busy);
+        if (ImGui.Button(settlement.State == DealerActionState.Failed ? "Retry settlement" : "Confirm settlement"))
+        {
+            RunPlayer(state, key, () => runtime.SubmitManualSettlementAsync(key));
+        }
+
+        EndDisabled(busy);
+        ImGui.SameLine();
+        BeginDisabled(busy || settlement.State == DealerActionState.Failed && !settlement.CanDiscardFailure);
+        if (ImGui.Button("Cancel"))
+        {
+            TryUiAction(state, () => runtime.CancelManualSettlement(key));
+        }
+
+        EndDisabled(busy || settlement.State == DealerActionState.Failed && !settlement.CanDiscardFailure);
         ImGui.PopID();
     }
 

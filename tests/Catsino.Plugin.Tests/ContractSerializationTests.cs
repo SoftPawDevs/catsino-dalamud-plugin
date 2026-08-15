@@ -9,8 +9,8 @@ public sealed class ContractSerializationTests
     [Fact]
     public void VersionIsStable()
     {
-        Assert.Equal("1.8.0", ContractVersion.Current);
-        Assert.Equal("1.8.1", PluginVersion.Current);
+        Assert.Equal("1.9.0", ContractVersion.Current);
+        Assert.Equal("1.9.0", PluginVersion.Current);
     }
 
     // The dealer's Hold'em view is the newest wire contact point between the two repositories, so its exact
@@ -50,6 +50,65 @@ public sealed class ContractSerializationTests
         Assert.Equal(3, restored.Board.Count);
         Assert.Empty(Assert.Single(restored.Seats).Cards);
         Assert.Equal(TimeSpan.Zero, restored.ObservedAt.Offset);
+    }
+
+    // The roulette table is the opposite of Hold'em: nothing is secret, so the dealer's payload carries
+    // every player's chips by name. Its shape is pinned the same way.
+    [Fact]
+    public void RouletteTableCarriesEveryPlayersChipsAndTheWinningNumber()
+    {
+        var sessionId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var membershipId = Guid.Parse("20000000-0000-0000-0000-000000000002");
+        var timestamp = new DateTimeOffset(2026, 8, 16, 12, 0, 0, TimeSpan.Zero);
+        var table = new RouletteTableDto(
+            sessionId,
+            Guid.Parse("30000000-0000-0000-0000-000000000003"),
+            "spinning",
+            [
+                new RouletteBetDto(membershipId, "Exact Player", "straight", [17], 25_000, null, null),
+                new RouletteBetDto(membershipId, "Exact Player", "corner", [1, 2, 4, 5], 10_000, null, null)
+            ],
+            35_000,
+            17,
+            "black",
+            [0, 26, 32],
+            1_000,
+            500_000,
+            [1_000, 2_000, 5_000, 10_000, 20_000],
+            null,
+            timestamp.AddSeconds(RouletteBetDefaults.SpinSeconds),
+            timestamp);
+
+        var json = JsonSerializer.Serialize(table, ContractJson.Options);
+        Assert.Contains("\"status\":\"spinning\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"winningNumber\":17", json, StringComparison.Ordinal);
+        Assert.Contains("\"winningColor\":\"black\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"selection\":[1,2,4,5]", json, StringComparison.Ordinal);
+        Assert.Contains("\"totalStaked\":35000", json, StringComparison.Ordinal);
+        Assert.Contains("\"observedAt\":\"2026-08-16T12:00:00+00:00\"", json, StringComparison.Ordinal);
+
+        var restored = JsonSerializer.Deserialize<RouletteTableDto>(json, ContractJson.Options)!;
+        Assert.Equal(2, restored.Bets.Count);
+        Assert.Equal("Exact Player", restored.Bets[0].Name);
+        Assert.Equal(37, RouletteBetDefaults.PocketCount);
+        Assert.Equal(TimeSpan.Zero, restored.ObservedAt.Offset);
+    }
+
+    // The manual settlement echoes the quote the dealer was shown, which is what lets the backend refuse a
+    // settlement whose amount moved between reading it and confirming it.
+    [Fact]
+    public void ManualSettlementEchoesTheQuoteTheDealerRead()
+    {
+        var request = new ManualSettlementRequest(true, 36_000_000, 1_800_000, 34_200_000);
+        var json = JsonSerializer.Serialize(request, ContractJson.Options);
+
+        Assert.Contains("\"confirmAllAvailable\":true", json, StringComparison.Ordinal);
+        Assert.Contains("\"expectedGross\":36000000", json, StringComparison.Ordinal);
+        Assert.Contains("\"expectedFee\":1800000", json, StringComparison.Ordinal);
+        Assert.Contains("\"expectedNet\":34200000", json, StringComparison.Ordinal);
+
+        var restored = JsonSerializer.Deserialize<ManualSettlementRequest>(json, ContractJson.Options)!;
+        Assert.Equal(request, restored);
     }
 
     [Fact]

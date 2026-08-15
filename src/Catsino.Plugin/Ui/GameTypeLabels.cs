@@ -11,6 +11,7 @@ public static class GameTypeLabels
         "plinko" => "Plinko",
         "blackjack" => "Blackjack",
         "holdem" => "Hold'em",
+        "roulette" => "Roulette",
         // An unknown type is still worth showing rather than hiding — a newer backend may know a game this
         // plugin does not.
         _ => string.IsNullOrWhiteSpace(gameType) ? "Unknown" : gameType

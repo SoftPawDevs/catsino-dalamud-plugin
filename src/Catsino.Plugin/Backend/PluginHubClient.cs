@@ -49,6 +49,7 @@ public sealed class PluginHubClient : IAsyncDisposable
         connection.On<string>(PluginHubProtocol.ReconnectRequired, reason => ReconnectRequired?.Invoke(reason));
         connection.On<BlackjackTableDto>(PluginHubProtocol.BlackjackStateChanged, table => BlackjackStateChanged?.Invoke(table));
         connection.On<HoldemTableDto>(PluginHubProtocol.HoldemStateChanged, table => HoldemStateChanged?.Invoke(table));
+        connection.On<RouletteTableDto>(PluginHubProtocol.RouletteStateChanged, table => RouletteStateChanged?.Invoke(table));
     }
 
     public event Action? RefreshDealerSessions;
@@ -59,6 +60,7 @@ public sealed class PluginHubClient : IAsyncDisposable
     public event Action<string>? ReconnectRequired;
     public event Action<BlackjackTableDto>? BlackjackStateChanged;
     public event Action<HoldemTableDto>? HoldemStateChanged;
+    public event Action<RouletteTableDto>? RouletteStateChanged;
     public event Action<bool>? ConnectionChanged;
     public event Action? Reconnected;
     public event Action? TerminallyDisconnected;

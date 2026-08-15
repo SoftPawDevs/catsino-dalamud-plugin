@@ -10,12 +10,12 @@
 
 ## Session Creation, Lists, Selection, Roster
 
-- `src/Catsino.Plugin/Ui/CatsinoWindow.cs` (create-session form: **game type** selector (Plinko / Blackjack / Texas Hold'em), default fee, min/max bet, and **Max players** — empty = unlimited, except Hold'em where the hint reads "max 10 players", empty means a full table, and a larger number is rejected before the request goes out)
-- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`CreateSessionAsync(gameType, feePercent, minBet, maxBet, maxPlayers, …)` — sends `CreateGameSessionRequest.GameType`, accepts only `plinko`/`blackjack`/`holdem`, and resolves the cap through `DealerInputValidator.ResolveMaxPlayers`; per-plugin defaults incl. `DefaultMaxPlayers`)
+- `src/Catsino.Plugin/Ui/CatsinoWindow.cs` (create-session form: **game type** selector (Plinko / Blackjack / Texas Hold'em / Roulette), default fee, min/max bet, and **Max players** — empty = unlimited, except Hold'em where the hint reads "max 10 players", empty means a full table, and a larger number is rejected before the request goes out)
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`CreateSessionAsync(gameType, feePercent, minBet, maxBet, maxPlayers, …)` — sends `CreateGameSessionRequest.GameType`, accepts only `plinko`/`blackjack`/`holdem`/`roulette`, and resolves the cap through `DealerInputValidator.ResolveMaxPlayers`; per-plugin defaults incl. `DefaultMaxPlayers`)
 - `src/Catsino.Plugin/Configuration/PluginConfiguration.cs` (`DefaultMaxPlayers`), `src/Catsino.Plugin/Security/DealerInputValidator.cs` (`TryParseMaxPlayers`/`ValidateMaxPlayers`)
 - `src/Catsino.Plugin/Runtime/SessionRosterStore.cs`
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (shows `Players: N / cap`)
-- `src/Catsino.Plugin/Ui/GameTypeLabels.cs` (the wire's bare `holdem` → `Hold'em`, and the `#1 Hold'em | Open` session summary; nothing dealer-facing prints a raw game type)
+- `src/Catsino.Plugin/Ui/GameTypeLabels.cs` (the wire's bare `holdem` → `Hold'em`, `roulette` → `Roulette`, and the `#1 Hold'em | Open` session summary; nothing dealer-facing prints a raw game type)
 - `tests/Catsino.Plugin.Tests/DealerSessionStateTests.cs`
 
 ## Invites And Tell Command Flow
@@ -39,6 +39,29 @@ Invite creation now depends on exact `Character Name`, exact `Home World`, and a
 - `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`RefreshBlackjackTableAsync`; the shared ~2s `RefreshTableGamesAsync` poll dispatches per game type; hub wiring `hub.BlackjackStateChanged += … blackjackStore.Set(table)`)
 - `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`GetBlackjackTableAsync`, `DealBlackjackAsync`, `DealerBlackjackHitAsync`, `DealerBlackjackStayAsync`)
 - `src/Catsino.Plugin/Backend/PluginHubProtocol.cs` + `PluginHubClient.cs` (`BlackjackStateChanged` device push)
+
+## Roulette Dealer Table (Spin)
+
+The dealer releases the ball and nothing else. The backend draws the number at the spin and books the
+payouts when it lands. Nothing at this table is secret, so the dealer's projection is the players' one.
+
+- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (the **Table** sub-tab on a `roulette` session hosts the panel; the game type -> renderer switch lives here)
+- `src/Catsino.Plugin/Ui/RoulettePanelRenderer.cs` (the wheel with the ball in its pocket, every player's chips with the field named in full, last numbers, **Spin** + Refresh)
+- `src/Catsino.Plugin/Ui/RouletteTextures.cs` + `src/Catsino.Plugin/Assets/Roulette/*.png` (embedded wheel art)
+- `src/Catsino.Plugin/Runtime/RouletteTableStore.cs` (latest `RouletteTableDto` per session)
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`SpinRouletteAsync` / `RefreshRouletteTableAsync`; the shared `RefreshTableGamesAsync` poll; hub wiring `hub.RouletteStateChanged += … rouletteStore.Set(table)`)
+- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`GetRouletteTableAsync`, `SpinRouletteAsync`)
+- `src/Catsino.Plugin/Backend/PluginHubProtocol.cs` + `PluginHubClient.cs` (`RouletteStateChanged` device push)
+
+## Settle & Remove (a payout made outside the game)
+
+For a win too large to hand over in 1M trades, the dealer sells to the player on the marketboard and then
+books the payout here. The plugin executes no trade on this path.
+
+- `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (the **Settle & remove** button next to every Cash out button, and `DrawManualSettlementConfirmation` — gross / dealer fee / **net to pay**, plus the explicit "no trade is executed" note)
+- `src/Catsino.Plugin/Runtime/CatsinoRuntime.cs` (`RequestManualSettlementPreviewAsync` / `SubmitManualSettlementAsync` / `CancelManualSettlement`, and the `manualSettlements` submission map cleaned up alongside the cash-out one)
+- `src/Catsino.Plugin/Workflow/DealerSessionActions.cs` (`ManualSettlementSubmission` — the pending/sending/failed state machine with a retained idempotency key)
+- `src/Catsino.Plugin/Backend/CatsinoApiClient.cs` (`SettleManuallyAsync`)
 
 ## Texas Hold'em Dealer Table (Deal)
 
@@ -85,7 +108,7 @@ starting the next hand; the backend runs the streets, enforces the betting rules
 
 ## Protocol Shape And Compatibility
 
-- `src/Catsino.Plugin.Contracts/` (public contract **1.8.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers` and `DealerSessionNumber`, and the Blackjack and Hold'em table/action DTOs live here. Backend accepts `{1.7.0, 1.8.0}` (`Contract.ShippedVersion` / `Contract.Version`). The plugin binary version `PluginVersion.Current` tracks the contract and is currently 1.8.0.)
+- `src/Catsino.Plugin.Contracts/` (public contract **1.9.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers` and `DealerSessionNumber`, and the Blackjack, Hold'em and Roulette table/action DTOs plus `ManualSettlementRequest` live here. Backend accepts `{1.8.0, 1.9.0}` (`Contract.ShippedVersion` / `Contract.Version`). The plugin binary version `PluginVersion.Current` tracks the contract and is currently 1.9.0.)
 - `docs/protocol/backend-v1.md` + `docs/protocol/backend-v1.fixture.json`
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`
 - `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`, `ContractSerializationTests.cs`
