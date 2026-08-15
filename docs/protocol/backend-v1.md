@@ -1,8 +1,8 @@
 # Backend Protocol v1
 
-All JSON uses contract `1.7.0` (backend accepts plugins on `{1.6.0, 1.7.0}`), camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
+All JSON uses contract `1.8.0` (backend accepts plugins on `{1.7.0, 1.8.0}`), camel-case properties, string enums, GUID identifiers, signed 64-bit gil amounts, decimal percentages, and UTC `DateTimeOffset` values. The plugin is untrusted: every token count, membership, session transition, idempotency decision, payout amount, and reconciliation result remains backend-authoritative.
 
-Recent additions: `1.4.0` added an optional `maxPlayers` to `CreateGameSessionRequest`/`GameSessionDto` (null = unlimited); `1.5.0` added the Blackjack dealer surface; `1.7.0` adds the Texas Hold'em dealer surface (`HoldemTableDto` and friends). `gameType` is one of `plinko`, `blackjack`, `holdem`.
+Recent additions: `1.4.0` added an optional `maxPlayers` to `CreateGameSessionRequest`/`GameSessionDto` (null = unlimited); `1.5.0` added the Blackjack dealer surface; `1.7.0` added the Texas Hold'em dealer surface (`HoldemTableDto` and friends); `1.8.0` adds `GameSessionDto.DealerSessionNumber`, the per-dealer "#1", "#2" label. `gameType` is one of `plinko`, `blackjack`, `holdem`.
 
 `backend-v1.fixture.json` is the machine-readable contract fixture. It enumerates every route, DTO example, hub event, hub payload, and idempotency requirement without requiring the private server to reference plugin source.
 

@@ -97,7 +97,7 @@ public sealed class HoldemPanelRenderer(CatsinoRuntime runtime, CardTextures car
 
         if (!drew)
         {
-            ImGui.TextDisabled("No community cards yet.");
+            ImGui.TextDisabled("The board is empty.");
         }
 
         // Side pots only exist once someone is all in for less than the others; showing one line per pot
@@ -263,6 +263,8 @@ public sealed class HoldemPanelRenderer(CatsinoRuntime runtime, CardTextures car
         "lost" => ("Lost", LossColor),
         "folded" => ("Folded", null),
         "allIn" => ("All in", ActiveColor),
+        // Seated but not in the current hand: waiting for the dealer to deal the next one.
+        "waiting" => (seat.SittingOut ? "Leaving" : "Waiting", null),
         _ => (seat.SittingOut ? "Leaving" : "Playing", null)
     };
 

@@ -116,7 +116,7 @@ public sealed class SessionPanelRenderer(CatsinoRuntime runtime, Action<Guid> op
             ShowTooltip("A session can only be deleted when the backend roster has no active players.");
         }
 
-        ImGui.TextUnformatted($"{session.GameType} | {session.State} | {roster?.Players.Count ?? session.PlayerCount} players");
+        ImGui.TextUnformatted($"{GameTypeLabels.Summary(session)} | {roster?.Players.Count ?? session.PlayerCount} players");
         ImGui.TextUnformatted($"Deposited: {session.TotalDepositedGil:N0} gil");
         DrawSessionControls(session, state);
 

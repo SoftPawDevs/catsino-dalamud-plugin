@@ -15,6 +15,7 @@
 - `src/Catsino.Plugin/Configuration/PluginConfiguration.cs` (`DefaultMaxPlayers`), `src/Catsino.Plugin/Security/DealerInputValidator.cs` (`TryParseMaxPlayers`/`ValidateMaxPlayers`)
 - `src/Catsino.Plugin/Runtime/SessionRosterStore.cs`
 - `src/Catsino.Plugin/Ui/SessionPanelRenderer.cs` (shows `Players: N / cap`)
+- `src/Catsino.Plugin/Ui/GameTypeLabels.cs` (the wire's bare `holdem` → `Hold'em`, and the `#1 Hold'em | Open` session summary; nothing dealer-facing prints a raw game type)
 - `tests/Catsino.Plugin.Tests/DealerSessionStateTests.cs`
 
 ## Invites And Tell Command Flow
@@ -84,7 +85,7 @@ starting the next hand; the backend runs the streets, enforces the betting rules
 
 ## Protocol Shape And Compatibility
 
-- `src/Catsino.Plugin.Contracts/` (public contract **1.7.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers`, and the Blackjack and Hold'em table/action DTOs live here. Backend accepts `{1.6.0, 1.7.0}` (`Contract.ShippedVersion` / `Contract.Version`). The plugin binary version `PluginVersion.Current` tracks the contract and is currently 1.7.0.)
+- `src/Catsino.Plugin.Contracts/` (public contract **1.8.0** — `ContractJson.ContractVersion.Current`; `CreateGameSessionRequest`/`GameSessionDto` carry `MaxPlayers` and `DealerSessionNumber`, and the Blackjack and Hold'em table/action DTOs live here. Backend accepts `{1.7.0, 1.8.0}` (`Contract.ShippedVersion` / `Contract.Version`). The plugin binary version `PluginVersion.Current` tracks the contract and is currently 1.8.0.)
 - `docs/protocol/backend-v1.md` + `docs/protocol/backend-v1.fixture.json`
 - `tests/Catsino.Plugin.Tests/ApiProtocolTests.cs`
 - `tests/Catsino.Plugin.Tests/ProtocolFixtureTests.cs`, `ContractSerializationTests.cs`

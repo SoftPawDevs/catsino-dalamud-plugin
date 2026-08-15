@@ -27,7 +27,10 @@ public sealed record GameSessionDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? OpenedAt,
     DateTimeOffset? ClosedAt,
-    int? MaxPlayers = null);
+    int? MaxPlayers = null,
+    // Short per-dealer label to show in the session list ("#1", "#2", …). Unique among that dealer's
+    // live sessions; a deleted session's number is reused by the next one created.
+    int DealerSessionNumber = 0);
 
 public static class PlinkoBetDefaults
 {
@@ -162,7 +165,7 @@ public sealed record HoldemSeatDto(
     long TotalCommitted,
     IReadOnlyList<BlackjackCardDto> Cards,
     bool HasHiddenCards,
-    // playing | folded | allIn | won | lost
+    // waiting (seated, not in the current hand) | playing | folded | allIn | won | lost
     string Status,
     bool IsActive,
     bool IsButton,

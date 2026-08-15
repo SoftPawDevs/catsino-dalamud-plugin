@@ -1,6 +1,7 @@
 using Catsino.Plugin.Contracts;
 using Catsino.Plugin.Runtime;
 using Catsino.Plugin.Security;
+using Catsino.Plugin.Ui;
 using Catsino.Plugin.Workflow;
 
 namespace Catsino.Plugin.Tests;
@@ -14,6 +15,30 @@ public sealed class ValidationAndSecurityTests
     public void FeeMustRemainWithinRange(double value)
     {
         Assert.NotNull(DealerInputValidator.ValidateFee((decimal)value, GameSessionState.Created));
+    }
+
+    // The wire carries bare identifiers ("holdem"); nothing dealer-facing should print them raw.
+    [Fact]
+    public void GameTypesAreLabelledForTheDealer()
+    {
+        Assert.Equal("Plinko", GameTypeLabels.Label("plinko"));
+        Assert.Equal("Blackjack", GameTypeLabels.Label("blackjack"));
+        Assert.Equal("Hold'em", GameTypeLabels.Label("holdem"));
+        Assert.Equal("Hold'em", GameTypeLabels.Label("HOLDEM"));
+        // A game this plugin does not know about is still worth showing rather than hiding.
+        Assert.Equal("roulette", GameTypeLabels.Label("roulette"));
+        Assert.Equal("Unknown", GameTypeLabels.Label(null));
+    }
+
+    [Fact]
+    public void SessionSummaryLeadsWithTheDealersOwnNumber()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var session = new GameSessionDto(
+            Guid.NewGuid(), "holdem", 0m, GameSessionState.Open, 2, 0, "none", "clear", now, now, null, 10, 1);
+        Assert.Equal("#1 Hold'em | Open", GameTypeLabels.Summary(session));
+        // A backend that does not send a number yet (or an archived row) simply drops the "#" prefix.
+        Assert.Equal("Hold'em | Open", GameTypeLabels.Summary(session with { DealerSessionNumber = 0 }));
     }
 
     [Fact]

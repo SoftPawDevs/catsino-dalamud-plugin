@@ -222,7 +222,7 @@ public sealed class CatsinoWindow : Window
         foreach (var session in runtime.Sessions)
         {
             var selected = runtime.SelectedSession?.SessionId == session.SessionId;
-            if (ImGui.Selectable($"{session.GameType} | {session.State}##{session.SessionId:D}", selected))
+            if (ImGui.Selectable($"{GameTypeLabels.Summary(session)}##{session.SessionId:D}", selected))
             {
                 Run(() => runtime.SelectSessionAsync(session.SessionId));
             }

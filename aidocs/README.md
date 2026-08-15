@@ -57,7 +57,8 @@ Keep `aidocs/` updated in the same change set as the code. If runtime behavior, 
 
 - Treat the plugin as untrusted from the backend point of view. (This is the internal trust model — it is **not** the public store description; that copy is the plainer "dealer's control panel, paired with the Catsino backend" in `repo.json` / `Catsino.Plugin.json`.)
 - The plugin must not become an authoritative balance or game-outcome source. For Blackjack it renders the server's table projection and submits dealer Deal/Hit/Stay; for Hold'em it renders the projection and submits Deal only. It never deals cards, values hands, checks a bet's legality, or splits a pot locally.
-- Contract versions are explicit and exact (public contract **1.7.0**; the backend also accepts **1.6.0** during rollout).
+- Contract versions are explicit and exact (public contract **1.8.0**; the backend also accepts **1.7.0** during rollout).
+- Sessions carry a per-dealer number (`GameSessionDto.DealerSessionNumber`) shown as `#1`, `#2`, … so the dealer can tell their tables apart. The backend owns it: it is the lowest number that dealer is not already using, and a deleted session's number is reused without renumbering the others.
 - Payout execution requires a ready built-in trade executor and exact player identity.
 - One active payout operation at a time.
 - Durable outbox before backend acknowledgement.
